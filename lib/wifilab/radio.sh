@@ -17,6 +17,34 @@ wifilab_iface_frequency_mhz() {
     printf '%s\n' "${value:-0}"
 }
 
+wifilab_radio_status_json() {
+    local iface phy channel frequency band='unknown'
+
+    if ! iface=$(wifilab_resolve_selected 2>/dev/null); then
+        printf '{"present":false,"interface":"","phy":"","channel":0,"frequency_mhz":0,"band":"unknown"}\n'
+        return 0
+    fi
+
+    phy=$(wifilab_phy_for_iface "$iface")
+    channel=$(wifilab_iface_channel "$iface")
+    frequency=$(wifilab_iface_frequency_mhz "$iface")
+    channel=${channel:-0}
+    frequency=${frequency:-0}
+
+    if (( frequency > 0 && frequency < 3000 )); then
+        band='2.4 GHz'
+    elif (( frequency >= 3000 && frequency < 5925 )); then
+        band='5 GHz'
+    elif (( frequency >= 5925 )); then
+        band='6 GHz'
+    fi
+
+    printf '{"present":true,"interface":"%s","phy":"%s","channel":%s,"frequency_mhz":%s,"band":"%s"}\n' \
+        "$(wifilab_json_escape "$iface")" \
+        "$(wifilab_json_escape "$phy")" \
+        "$channel" "$frequency" "$(wifilab_json_escape "$band")"
+}
+
 wifilab_channels_json() {
     local iface phy line frequency channel tail first=1
     local disabled no_ir radar band
