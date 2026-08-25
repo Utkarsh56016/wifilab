@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SOURCE=${BASH_SOURCE[0]}
+while [[ -L "$SOURCE" ]]; do
+    SOURCE_DIR=$(cd -P -- "$(dirname -- "$SOURCE")" && pwd)
+    TARGET=$(readlink -- "$SOURCE")
+    if [[ $TARGET == /* ]]; then
+        SOURCE=$TARGET
+    else
+        SOURCE="$SOURCE_DIR/$TARGET"
+    fi
+done
+
+SCRIPT_DIR=$(cd -P -- "$(dirname -- "$SOURCE")" && pwd)
+ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
+ENTRYPOINT="$ROOT_DIR/ui/quickshell/wifilab/shell.qml"
+
+command -v qs >/dev/null 2>&1 || {
+    printf 'wifilab-ui: Quickshell executable `qs` was not found in PATH\n' >&2
+    exit 127
+}
+
+[[ -r $ENTRYPOINT ]] || {
+    printf 'wifilab-ui: missing Quickshell entrypoint: %s\n' "$ENTRYPOINT" >&2
+    exit 66
+}
+
+# Foreground mode is intentionally available for debugging QML/log output.
+if [[ ${WIFILAB_UI_FOREGROUND:-0} == 1 ]]; then
+    exec qs --path "$ENTRYPOINT"
+fi
+
+exec qs --daemonize --path "$ENTRYPOINT"
