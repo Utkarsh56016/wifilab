@@ -5,6 +5,8 @@
 
 set -o pipefail
 
+WIFILAB_SEP=$'\x1f'
+
 wifilab_have() {
     command -v "$1" >/dev/null 2>&1
 }
@@ -77,12 +79,8 @@ wifilab_monitor_supported() {
     wifilab_have iw || { printf 'unknown\n'; return; }
 
     if iw phy "$phy" info 2>/dev/null |
-        awk '
-            /Supported interface modes:/ {in_modes=1; next}
-            in_modes && /^[^[:space:]]/ {exit}
-            in_modes && /\* monitor([[:space:]]|$)/ {found=1}
-            END {exit !found}
-        '; then
+        sed -n '/Supported interface modes:/,/Band 1:/p' |
+        grep -Eq '^[[:space:]]*\* monitor[[:space:]]*$'; then
         printf 'true\n'
     else
         printf 'false\n'
@@ -149,12 +147,14 @@ wifilab_collect_iface() {
     device_name=$(wifilab_human_device_name "$iface" "$bus" "$vendor_id" "$model_id")
     role=$(wifilab_role_for_iface "$nm_state" "$connection" "$bus")
 
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$iface" "$phy" "$type" "$mac" "$operstate" "$nm_state" "$connection" "$driver" \
-        "$bus" "$vendor_id" "$model_id" "$vendor" "$model" "$path" "$monitor" "$regdomain" "$role|$device_name"
+    printf '%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s\n' \
+        "$iface" "$WIFILAB_SEP" "$phy" "$WIFILAB_SEP" "$type" "$WIFILAB_SEP" "$mac" "$WIFILAB_SEP" \
+        "$operstate" "$WIFILAB_SEP" "$nm_state" "$WIFILAB_SEP" "$connection" "$WIFILAB_SEP" "$driver" "$WIFILAB_SEP" \
+        "$bus" "$WIFILAB_SEP" "$vendor_id" "$WIFILAB_SEP" "$model_id" "$WIFILAB_SEP" "$vendor" "$WIFILAB_SEP" \
+        "$model" "$WIFILAB_SEP" "$path" "$WIFILAB_SEP" "$monitor" "$WIFILAB_SEP" "$regdomain" "$WIFILAB_SEP" "$role|$device_name"
 }
 
-wifilab_discover_tsv() {
+wifilab_discover_records() {
     local iface
     while IFS= read -r iface; do
         [[ -n $iface ]] || continue
@@ -163,11 +163,11 @@ wifilab_discover_tsv() {
 }
 
 wifilab_discover_json() {
-    local first=1 line
+    local first=1
     local iface phy type mac operstate nm_state connection driver bus vendor_id model_id vendor model path monitor regdomain tail role device_name
 
     printf '{"adapters":['
-    while IFS=$'\t' read -r iface phy type mac operstate nm_state connection driver bus vendor_id model_id vendor model path monitor regdomain tail; do
+    while IFS="$WIFILAB_SEP" read -r iface phy type mac operstate nm_state connection driver bus vendor_id model_id vendor model path monitor regdomain tail; do
         role=${tail%%|*}
         device_name=${tail#*|}
         (( first )) || printf ','
@@ -192,15 +192,14 @@ wifilab_discover_json() {
         printf '"regdomain":"%s",' "$(wifilab_json_escape "$regdomain")"
         printf '"role":"%s"' "$(wifilab_json_escape "$role")"
         printf '}'
-    done < <(wifilab_discover_tsv)
+    done < <(wifilab_discover_records)
     printf ']}\n'
 }
 
 wifilab_discover_human() {
-    local line
     local iface phy type mac operstate nm_state connection driver bus vendor_id model_id vendor model path monitor regdomain tail role device_name
 
-    while IFS=$'\t' read -r iface phy type mac operstate nm_state connection driver bus vendor_id model_id vendor model path monitor regdomain tail; do
+    while IFS="$WIFILAB_SEP" read -r iface phy type mac operstate nm_state connection driver bus vendor_id model_id vendor model path monitor regdomain tail; do
         role=${tail%%|*}
         device_name=${tail#*|}
 
@@ -219,5 +218,5 @@ wifilab_discover_human() {
         printf '  Regdomain  : %s\n' "${regdomain:-unknown}"
         printf '  MAC        : %s\n' "${mac:-unknown}"
         printf '\n'
-    done < <(wifilab_discover_tsv)
+    done < <(wifilab_discover_records)
 }
