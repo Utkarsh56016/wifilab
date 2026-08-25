@@ -15,8 +15,11 @@ done
 
 SCRIPT_DIR=$(cd -P -- "$(dirname -- "$SOURCE")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
+
 # shellcheck source=../lib/wifilab/discover.sh
 source "$ROOT_DIR/lib/wifilab/discover.sh"
+# shellcheck source=../lib/wifilab/state.sh
+source "$ROOT_DIR/lib/wifilab/state.sh"
 
 usage() {
     cat <<'EOF'
@@ -27,23 +30,37 @@ Usage:
   wifilab info
   wifilab --json
   wifilab doctor
+  wifilab monitor <iface>
+  wifilab managed <iface>
+  wifilab restore <iface>
+  wifilab channel <iface> <channel>
   wifilab help
 
-Commands:
+Read-only commands:
   list      Show discovered wireless adapters
-  info      Alias for list in Phase 1
+  info      Alias for list
   --json    Emit machine-readable adapter discovery output
-  doctor    Check discovery dependencies without changing system state
-  help      Show this help
+  doctor    Check dependencies and basic discovery health
 
-Phase 1 is read-only. No interface state is modified.
+State commands:
+  monitor   Safely release one idle wireless interface from NetworkManager
+            and switch it to monitor mode
+  managed   Switch one idle wireless interface to managed mode and return it
+            to NetworkManager
+  restore   Deterministically restore one idle wireless interface to managed
+            mode with NetworkManager ownership
+  channel   Set the channel of an interface already in monitor mode
+
+Safety:
+  WiFiLab refuses state changes on the currently connected system Wi-Fi
+  interface. It never globally kills or restarts NetworkManager.
 EOF
 }
 
 doctor() {
     local missing=0 cmd
-    printf 'WiFiLab discovery dependencies\n\n'
-    for cmd in iw ip nmcli udevadm lspci lsusb; do
+    printf 'WiFiLab dependencies\n\n'
+    for cmd in iw ip nmcli udevadm lspci lsusb sudo; do
         if command -v "$cmd" >/dev/null 2>&1; then
             printf '  [ok]      %s -> %s\n' "$cmd" "$(command -v "$cmd")"
         else
@@ -69,6 +86,22 @@ case "${1:-list}" in
         ;;
     doctor)
         doctor
+        ;;
+    monitor)
+        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+        wifilab_monitor "$2"
+        ;;
+    managed)
+        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+        wifilab_managed "$2"
+        ;;
+    restore)
+        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
+        wifilab_restore "$2"
+        ;;
+    channel)
+        [[ $# -eq 3 ]] || { usage >&2; exit 2; }
+        wifilab_channel "$2" "$3"
         ;;
     help|-h|--help)
         usage
