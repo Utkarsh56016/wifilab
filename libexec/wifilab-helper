@@ -8,18 +8,16 @@ set -euo pipefail
 
 LIB_DIR=/usr/lib/wifilab
 
-for file in discover.sh state.sh select.sh; do
+for file in discover.sh state.sh safety.sh select.sh; do
     [[ -r "$LIB_DIR/$file" ]] || {
         printf 'wifilab-helper: missing trusted library %s/%s\n' "$LIB_DIR" "$file" >&2
         exit 70
     }
 done
 
-# shellcheck source=/dev/null
 source "$LIB_DIR/discover.sh"
-# shellcheck source=/dev/null
 source "$LIB_DIR/state.sh"
-# shellcheck source=/dev/null
+source "$LIB_DIR/safety.sh"
 source "$LIB_DIR/select.sh"
 
 require_root() {
