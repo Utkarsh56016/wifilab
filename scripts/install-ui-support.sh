@@ -29,11 +29,16 @@ Will install root-owned files:
   $POLICY_DST
 
 The Quickshell UI remains unprivileged. Mutating requests use pkexec and the
-allowlisted helper. The helper revalidates the target and refuses interfaces
-with an active NetworkManager connection or an IPv4/IPv6 default route.
+allowlisted helper. The helper independently resolves the invoking user's
+persisted physical adapter identity immediately before mutation, then refuses
+interfaces with an active NetworkManager connection or an IPv4/IPv6 default
+route. Runtime wlanX values supplied by the UI are hints, not authority.
 
 Apply:
   $0 --apply
+
+Safe first validation after install (authenticates but does not mutate radio):
+  pkexec $HELPER_DST probe
 
 Rollback:
   $0 --remove
@@ -43,6 +48,7 @@ EOF
 apply_install() {
     command -v sudo >/dev/null 2>&1 || { echo 'install-ui-support: sudo is required' >&2; exit 1; }
     command -v pkexec >/dev/null 2>&1 || { echo 'install-ui-support: pkexec/polkit is required' >&2; exit 1; }
+    command -v getent >/dev/null 2>&1 || { echo 'install-ui-support: getent is required' >&2; exit 1; }
 
     for path in \
         "$ROOT_DIR/lib/wifilab/discover.sh" \
@@ -65,12 +71,21 @@ apply_install() {
 
     echo 'WiFiLab UI privileged support installed.'
     echo
-    echo 'Validation:'
+    echo 'Installed ownership/modes:'
     ls -ld "$LIB_DST"
-    ls -l "$HELPER_DST" "$POLICY_DST"
+    ls -l "$LIB_DST"/*.sh "$HELPER_DST" "$POLICY_DST"
+
+    echo
+    echo 'Polkit action:'
     if command -v pkaction >/dev/null 2>&1; then
         pkaction --action-id io.github.utkarsh56016.wifilab.control --verbose 2>/dev/null || true
+    else
+        echo '  pkaction not available; policy file is installed but action listing was skipped.'
     fi
+
+    echo
+    echo 'Next safe gate (no radio mutation):'
+    echo "  pkexec $HELPER_DST probe"
 }
 
 remove_install() {
