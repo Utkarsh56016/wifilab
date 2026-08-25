@@ -39,6 +39,7 @@ Usage:
   wifilab doctor
   wifilab select [iface]
   wifilab status [--json]
+  wifilab radio --json
   wifilab channels --json
   wifilab telemetry --json
   wifilab protocols --json
@@ -62,6 +63,8 @@ Selection:
             interface and show live state. Add --json for UI/agent use.
 
 Read-only UI/agent data:
+  radio --json
+            Emit the selected adapter's current channel/frequency when known.
   channels --json
             Emit kernel-advertised channels and regulatory flags for the
             selected adapter PHY.
@@ -147,6 +150,10 @@ case "${1:-adapters}" in
                 ;;
             *) usage >&2; exit 2 ;;
         esac
+        ;;
+    radio)
+        [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
+        wifilab_radio_status_json
         ;;
     channels)
         [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
