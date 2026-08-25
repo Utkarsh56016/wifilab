@@ -20,40 +20,54 @@ ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 source "$ROOT_DIR/lib/wifilab/discover.sh"
 # shellcheck source=../lib/wifilab/state.sh
 source "$ROOT_DIR/lib/wifilab/state.sh"
+# shellcheck source=../lib/wifilab/select.sh
+source "$ROOT_DIR/lib/wifilab/select.sh"
 
 usage() {
     cat <<'EOF'
 WiFiLab
 
 Usage:
+  wifilab adapters
   wifilab list
   wifilab info
   wifilab --json
   wifilab doctor
-  wifilab monitor <iface>
-  wifilab managed <iface>
-  wifilab restore <iface>
-  wifilab channel <iface> <channel>
+  wifilab select [iface]
+  wifilab status
+  wifilab monitor [iface]
+  wifilab managed [iface]
+  wifilab restore [iface]
+  wifilab channel [iface] <channel>
   wifilab help
 
-Read-only commands:
-  list      Show discovered wireless adapters
-  info      Alias for list
+Discovery:
+  adapters  Show discovered wireless adapters
+  list      Alias for adapters
+  info      Alias for adapters
   --json    Emit machine-readable adapter discovery output
   doctor    Check dependencies and basic discovery health
 
+Selection:
+  select    Persist a physical lab-adapter identity. With no interface,
+            auto-select the sole idle USB wireless candidate.
+  status    Resolve the selected physical adapter to its current runtime
+            interface and show its live state.
+
 State commands:
-  monitor   Safely release one idle wireless interface from NetworkManager
-            and switch it to monitor mode
-  managed   Switch one idle wireless interface to managed mode and return it
-            to NetworkManager
-  restore   Deterministically restore one idle wireless interface to managed
-            mode with NetworkManager ownership
-  channel   Set the channel of an interface already in monitor mode
+  monitor   Switch the selected adapter to monitor mode. An explicit iface
+            may still be supplied for diagnostics or recovery.
+  managed   Switch the selected adapter to managed mode and return it to
+            NetworkManager.
+  restore   Deterministically restore the selected adapter to managed mode
+            with NetworkManager ownership.
+  channel   Set a monitor-mode channel. Usage: `wifilab channel 11` for the
+            selected adapter, or `wifilab channel wlan6 11` explicitly.
 
 Safety:
   WiFiLab refuses state changes on the currently connected system Wi-Fi
-  interface. It never globally kills or restarts NetworkManager.
+  interface. Selection stores physical metadata rather than wlanX/phyX names.
+  WiFiLab never globally kills or restarts NetworkManager.
 EOF
 }
 
@@ -77,8 +91,17 @@ doctor() {
     return "$missing"
 }
 
-case "${1:-list}" in
-    list|info)
+resolve_optional_iface() {
+    local explicit=${1-}
+    if [[ -n $explicit ]]; then
+        printf '%s\n' "$explicit"
+    else
+        wifilab_resolve_selected
+    fi
+}
+
+case "${1:-adapters}" in
+    adapters|list|info)
         wifilab_discover_human
         ;;
     --json|json)
@@ -87,21 +110,43 @@ case "${1:-list}" in
     doctor)
         doctor
         ;;
+    select)
+        [[ $# -le 2 ]] || { usage >&2; exit 2; }
+        wifilab_select "${2-}"
+        ;;
+    status)
+        [[ $# -eq 1 ]] || { usage >&2; exit 2; }
+        wifilab_status
+        ;;
     monitor)
-        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
-        wifilab_monitor "$2"
+        [[ $# -le 2 ]] || { usage >&2; exit 2; }
+        iface=$(resolve_optional_iface "${2-}")
+        wifilab_monitor "$iface"
         ;;
     managed)
-        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
-        wifilab_managed "$2"
+        [[ $# -le 2 ]] || { usage >&2; exit 2; }
+        iface=$(resolve_optional_iface "${2-}")
+        wifilab_managed "$iface"
         ;;
     restore)
-        [[ $# -eq 2 ]] || { usage >&2; exit 2; }
-        wifilab_restore "$2"
+        [[ $# -le 2 ]] || { usage >&2; exit 2; }
+        iface=$(resolve_optional_iface "${2-}")
+        wifilab_restore "$iface"
         ;;
     channel)
-        [[ $# -eq 3 ]] || { usage >&2; exit 2; }
-        wifilab_channel "$2" "$3"
+        case $# in
+            2)
+                iface=$(wifilab_resolve_selected)
+                wifilab_channel "$iface" "$2"
+                ;;
+            3)
+                wifilab_channel "$2" "$3"
+                ;;
+            *)
+                usage >&2
+                exit 2
+                ;;
+        esac
         ;;
     help|-h|--help)
         usage
