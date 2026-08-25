@@ -7,7 +7,14 @@
 set -o pipefail
 
 wifilab_read_counter() {
-    local iface=$1 name=$2 file="/sys/class/net/$iface/statistics/$name"
+    # Keep declarations separate under `set -u`: Bash expands all RHS values
+    # in a single `local` command before completing the assignments, so using
+    # $name in the same declaration that creates `name` can trigger an
+    # "unbound variable" failure.
+    local iface=$1
+    local name=$2
+    local file="/sys/class/net/$iface/statistics/$name"
+
     [[ -r $file ]] || { printf '0\n'; return; }
     cat "$file" 2>/dev/null || printf '0\n'
 }
