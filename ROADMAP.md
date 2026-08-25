@@ -1,6 +1,6 @@
 # WiFiLab Roadmap
 
-WiFiLab is a safe Linux wireless-adapter controller for Arch Linux, with a CLI/core backend, a root-owned polkit helper for allowlisted mutations, and a Quickshell floating-panel frontend.
+WiFiLab is a safe Linux wireless-adapter controller with a CLI/core backend, a narrow privileged mutation boundary, and a Quickshell frontend. Arch Linux + niri + NetworkManager remains the validated development host, while the product direction is portable support for declared Linux host profiles rather than hardcoded workstation assumptions.
 
 ## Phase 0 — Hardware Validation
 
@@ -62,7 +62,7 @@ Implemented and validated:
 - structured JSON endpoints for UI/agent consumers
 - clear non-zero error paths for malformed and unsupported operations
 
-Validated across multiple runtime re-enumerations, including `wlan13`, `wlan15`, and `wlan17`.
+Validated across multiple runtime re-enumerations and reboot, including runtime names such as `wlan13`, `wlan15`, `wlan17`, and `wlan2`.
 
 ## Phase 4 — Quickshell Integration
 
@@ -99,34 +99,89 @@ A proposed repeated 10-cycle soak was intentionally waived after the acceptance 
 
 ## Phase 6 — Passive Capture and Lab Integrations
 
-Status: **Next**
+Status: **In progress — bounded capture baseline validated**
 
-Planned scope:
-- optional `tshark` / `dumpcap` capability discovery
-- non-root passive protocol sampling using existing capture permissions only
-- bounded PCAP capture sessions on the selected lab adapter
-- capture metadata and file management
-- Wireshark launch helper for saved captures
-- UI capture state and protocol-mix integration
-- explicit capture start/stop lifecycle
-- safe failure behavior when capture permissions are unavailable
+Implemented and validated:
+- `wireshark-cli` / `dumpcap` / `tshark` capability discovery
+- normal-user capture through the host `wireshark` group and package-managed `dumpcap` capabilities
+- no root `tshark` / `dumpcap` execution
+- capture permission state exposed through JSON
+- bounded PCAPNG capture on the selected physical lab adapter
+- capture requires monitor mode
+- protected/default-route wireless interfaces are refused
+- runtime physical-adapter re-resolution before capture
+- capture duration and file-size bounds
+- XDG capture data directory
+- capture inventory JSON
+- TRAFFIC UI capture readiness and bounded-capture control
+- IEEE 802.11 + radiotap output validated with real captured frames
+- capture/restore workflow validated while the system default route remained on `wlan0`
+- capture functionality survived reboot and adapter re-enumeration from `wlan17` to `wlan2`
+
+Known-good rollback checkpoint:
+
+```text
+commit: ac1af9f4c970d02d906a5625619a75f72a1faeec
+branch: checkpoint/phase6-capture-ui-validated-2026-08-26
+```
+
+See `docs/ROLLBACK_CHECKPOINTS.md`.
+
+Next implementation scope:
+- CAPTURES tab
+- file metadata from saved PCAPNG
+- latest-capture JSON
+- offline protocol mix using `tshark -r`
+- optional Wireshark GUI launch helper
+- viewer-unavailable state when no GUI viewer is installed
+- explicit capture/session lifecycle metadata
+- remove periodic live `tshark` sampling as the long-term protocol-display path
 
 Deferred until separately designed and validated:
 - channel hopping
 - aircrack-ng workflows
 - frame injection
 
-WiFiLab must never acquire broader privilege merely to make the UI graph or protocol panel work.
+WiFiLab must never acquire broader privilege merely to make the UI graph, protocol panel, or capture viewer work.
 
-## Phase 7 — Packaging and Documentation
+## Phase 7 — Product Tabs and Portable Host Capability Model
 
 Status: **Planned**
 
+Primary packaged UI direction:
+
+```text
+CONTROL | TRAFFIC | CAPTURES | SURVEY | SYSTEM
+```
+
+Planned work:
+- CAPTURES tab for saved PCAP analysis and viewer integration
+- SURVEY tab for passive current-channel wireless observations
+- SYSTEM tab for hardware, safety, dependency, capability, and diagnostics state
+- one machine-readable host capability manifest
+- optional DMS theming with a built-in fallback palette
+- optional compositor integration instead of mandatory niri coupling
+- network-management provider abstraction instead of hardcoded NetworkManager assumptions
+- capture backend abstraction around dumpcap/tshark
+- clear feature degradation when optional tools are absent
+
+See `docs/UI_TAB_AND_PORTABILITY_PLAN.md`.
+
+## Phase 8 — Packaging and Documentation
+
+Status: **Planned**
+
+Recommended order:
+- Arch package first on the validated development host
 - install / uninstall path
-- Arch packaging direction
+- XDG-compliant user data/config paths
 - shell completion
-- troubleshooting and validation documentation
-- privilege model documentation
-- capture permission documentation
+- privilege-model documentation
+- capture-permission documentation
 - rollback documentation
+- dependency/capability diagnostics
+- generic native installer after Arch behavior is stable
+- Debian-family and RPM-family packaging after backend abstraction is complete
 - final architecture and operational runbooks
+
+Portable packaging must not be achieved by running the whole application as root or by weakening capture/radio safety checks.
