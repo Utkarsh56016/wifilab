@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=WiFiLab
+Comment=Wireless lab adapter controller
+Exec=wifilab-ui
+Icon=network-wireless
+Terminal=false
+NoDisplay=true
+Categories=System;Network;
+StartupNotify=false
