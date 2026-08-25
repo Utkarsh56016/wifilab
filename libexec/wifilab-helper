@@ -76,7 +76,7 @@ resolve_control_iface() {
     # The hint is intentionally not authoritative. Interface names can change
     # after USB re-enumeration; the selected physical identity is authoritative.
     if [[ -n $hint && $hint != "$resolved" ]]; then
-        printf 'WiFiLab: runtime interface changed %s -> %s; using selected physical adapter\n' "$hint" "$resolved"
+        printf 'wifilab-helper: runtime interface changed %s -> %s; using selected physical adapter\n' "$hint" "$resolved" >&2
     fi
 
     printf '%s\n' "$resolved"
