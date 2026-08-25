@@ -14,12 +14,11 @@ window-rule {
     geometry-corner-radius 24
     clip-to-geometry true
 
-    // The QML surface is translucent. Let niri provide the actual compositor blur.
-    // Explicit xray=false avoids inheriting an xray policy from broader DMS rules.
+    // Keep blur subtle: QML surfaces are intentionally near-opaque for readability.
     background-effect {
         xray false
         blur true
-        noise 0.015
-        saturation 1.15
+        noise 0.006
+        saturation 1.05
     }
 }
