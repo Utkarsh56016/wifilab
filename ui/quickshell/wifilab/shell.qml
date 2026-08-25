@@ -11,27 +11,25 @@ import Quickshell.Wayland
 ShellRoot {
     id: app
 
-    // Runtime models
     property var adapters: []
     property var adapterLabels: []
     property var status: ({ selected: false, present: false })
     property var radio: ({ present: false, channel: 0, frequency_mhz: 0, band: "unknown" })
     property var channels: []
     property var protocols: []
-    property bool protocolAvailable: false
-    property bool protocolPermitted: false
-    property int protocolSamplePackets: 0
+    property var activity: ["WiFiLab UI started"]
+
     property int activeTab: 0
     property int inspectedIndex: -1
     property bool inspectingProtected: false
-    property bool detailsExpanded: false
-    property bool diagnosticsExpanded: false
     property bool helperReady: false
     property bool actionBusy: false
-    property string actionError: ""
-    property var activity: ["WiFiLab UI started"]
+    property bool detailsExpanded: false
+    property bool diagnosticsExpanded: false
+    property bool protocolAvailable: false
+    property bool protocolPermitted: false
+    property int protocolSamplePackets: 0
 
-    // Telemetry state
     property double lastTelemetryTime: 0
     property double lastRxBytes: 0
     property double lastTxBytes: 0
@@ -42,12 +40,12 @@ ShellRoot {
     property double rxPacketRate: 0
     property double txPacketRate: 0
 
-    // DMS-like fallback palette. The theme loader replaces these when it can
-    // parse ~/.cache/DankMaterialShell/dms-colors.json.
+    // DMS-compatible fallback palette. At launch we read DMS' generated palette
+    // and replace any values we can identify without importing DMS internals.
     property color dmsPrimary: "#9CCBFF"
-    property color surface: "#E6141820"
-    property color surfaceHigh: "#E81B2029"
-    property color surfaceHighest: "#F0222832"
+    property color surface: "#141820"
+    property color surfaceHigh: "#1B2029"
+    property color surfaceHighest: "#222832"
     property color textPrimary: "#EAF1F7"
     property color textMuted: "#9AA9B7"
     property color outline: "#43505F"
@@ -56,11 +54,10 @@ ShellRoot {
     property color error: "#FF5D68"
     property color info: "#58D8FF"
     property color monitorAccent: "#42E85F"
-    property color accent: status.mode === "monitor" && !inspectingProtected ? monitorAccent : dmsPrimary
+    property color accent: monitorMode && !inspectingProtected ? monitorAccent : dmsPrimary
 
     readonly property var inspectedAdapter: inspectedIndex >= 0 && inspectedIndex < adapters.length ? adapters[inspectedIndex] : ({})
-    readonly property bool selectedPresent: !inspectingProtected && status.present === true
-    readonly property bool protectedView: inspectingProtected || (status.protected === true)
+    readonly property bool protectedView: inspectingProtected || status.protected === true
     readonly property string currentMode: inspectingProtected ? (inspectedAdapter.type || "managed") : (status.mode || "unknown")
     readonly property string currentNmState: inspectingProtected ? (inspectedAdapter.nm_state || "unknown") : (status.nm_state || "unknown")
     readonly property string currentInterface: inspectingProtected ? (inspectedAdapter.interface || "—") : (status.interface || "—")
@@ -69,19 +66,19 @@ ShellRoot {
     readonly property string currentDeviceName: inspectingProtected ? (inspectedAdapter.device_name || "Wireless adapter") : (status.device_name || "Selected wireless adapter")
     readonly property bool monitorMode: currentMode === "monitor"
 
-    function json(text, fallback) {
+    function parseJson(text, fallback) {
         try { return JSON.parse(text) } catch (e) { return fallback }
     }
 
     function findColor(obj, names) {
         if (!obj || typeof obj !== "object") return ""
         for (var i = 0; i < names.length; ++i) {
-            if (obj[names[i]] && typeof obj[names[i]] === "string") return obj[names[i]]
+            if (typeof obj[names[i]] === "string" && obj[names[i]].length > 0) return obj[names[i]]
         }
         for (var key in obj) {
             if (obj[key] && typeof obj[key] === "object") {
-                var found = findColor(obj[key], names)
-                if (found) return found
+                var nested = findColor(obj[key], names)
+                if (nested) return nested
             }
         }
         return ""
@@ -90,9 +87,9 @@ ShellRoot {
     function applyDmsTheme(data) {
         var v
         v = findColor(data, ["primary"]); if (v) dmsPrimary = v
-        v = findColor(data, ["surface"]); if (v) surface = Qt.alpha(v, 0.88)
-        v = findColor(data, ["surfaceContainerHigh", "surface_container_high"]); if (v) surfaceHigh = Qt.alpha(v, 0.91)
-        v = findColor(data, ["surfaceContainerHighest", "surface_container_highest"]); if (v) surfaceHighest = Qt.alpha(v, 0.96)
+        v = findColor(data, ["surface"]); if (v) surface = v
+        v = findColor(data, ["surfaceContainerHigh", "surface_container_high"]); if (v) surfaceHigh = v
+        v = findColor(data, ["surfaceContainerHighest", "surface_container_highest"]); if (v) surfaceHighest = v
         v = findColor(data, ["surfaceText", "onSurface", "on_surface"]); if (v) textPrimary = v
         v = findColor(data, ["surfaceVariantText", "onSurfaceVariant", "on_surface_variant"]); if (v) textMuted = v
         v = findColor(data, ["outline"]); if (v) outline = v
@@ -102,25 +99,23 @@ ShellRoot {
         v = findColor(data, ["info"]); if (v) info = v
     }
 
-    function addActivity(message) {
+    function log(message) {
         var a = activity.slice(0)
-        var now = new Date()
-        a.unshift(Qt.formatTime(now, "HH:mm:ss") + "  " + message)
-        while (a.length > 6) a.pop()
+        a.unshift(Qt.formatTime(new Date(), "HH:mm:ss") + "  " + message)
+        while (a.length > 5) a.pop()
         activity = a
     }
 
     function formatRate(value) {
         var n = Math.max(0, Number(value) || 0)
-        if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(2) + " MiB/s"
+        if (n >= 1048576) return (n / 1048576).toFixed(2) + " MiB/s"
         if (n >= 1024) return (n / 1024).toFixed(1) + " KiB/s"
         return n.toFixed(0) + " B/s"
     }
 
-    function formatPacketRate(value) {
+    function formatPps(value) {
         var n = Math.max(0, Number(value) || 0)
-        if (n >= 1000) return (n / 1000).toFixed(1) + " Kpps"
-        return n.toFixed(0) + " pps"
+        return n >= 1000 ? (n / 1000).toFixed(1) + " Kpps" : n.toFixed(0) + " pps"
     }
 
     function applyAdapters(payload) {
@@ -134,19 +129,21 @@ ShellRoot {
         adapterLabels = labels
 
         var wanted = inspectingProtected ? (inspectedAdapter.interface || "") : (status.interface || "")
-        var match = -1
         for (var j = 0; j < adapters.length; ++j) {
-            if (adapters[j].interface === wanted) { match = j; break }
+            if (adapters[j].interface === wanted) {
+                inspectedIndex = j
+                return
+            }
         }
-        if (match < 0 && !inspectingProtected && status.present) {
+        if (!inspectingProtected && status.present) {
             for (var k = 0; k < adapters.length; ++k) {
                 var c = adapters[k]
                 if (c.bus === status.bus && c.vendor_id === status.vendor_id && c.model_id === status.model_id && c.driver === status.driver) {
-                    match = k; break
+                    inspectedIndex = k
+                    return
                 }
             }
         }
-        if (match >= 0) inspectedIndex = match
     }
 
     function inspectAdapter(index) {
@@ -156,64 +153,60 @@ ShellRoot {
         var isProtected = a.role === "system" || (a.nm_state === "connected" && a.connection)
         if (isProtected) {
             inspectingProtected = true
-            addActivity("Viewing protected system adapter " + a.interface)
+            log("Viewing protected system adapter " + a.interface)
             return
         }
         inspectingProtected = false
         selectProcess.exec(["wifilab", "select", a.interface])
     }
 
-    function runAction(operation, channel) {
+    function runAction(operation, value) {
         if (actionBusy || !helperReady || protectedView || !status.present) return
-        var cmd = ["pkexec", "/usr/lib/wifilab/wifilab-helper", operation, status.interface]
-        if (operation === "channel") cmd.push(String(channel))
-        actionError = ""
+        var command = ["pkexec", "/usr/lib/wifilab/wifilab-helper", operation, status.interface]
+        if (operation === "channel") command.push(String(value))
         actionBusy = true
-        actionProcess.exec(cmd)
-        addActivity("Requested " + operation + " on " + status.interface)
+        actionProcess.exec(command)
+        log("Requested " + operation + " on " + status.interface)
     }
 
     function requestMonitor() {
         if (protectedView || !status.present || !helperReady) return
-        if (status.role === "lab-candidate" && status.bus === "usb") {
-            runAction("monitor", 0)
-        } else {
-            riskDialog.open()
-        }
+        if (status.role === "lab-candidate" && status.bus === "usb") runAction("monitor", 0)
+        else riskDialog.open()
     }
 
-    function currentBandChannels() {
-        var band = radio.band === "5 GHz" ? "5 GHz" : "2.4 GHz"
-        var out = []
-        for (var i = 0; i < channels.length; ++i) if (channels[i].band === band) out.push(channels[i])
-        return out
+    function bandChannels() {
+        var wantedBand = radio.band === "5 GHz" ? "5 GHz" : "2.4 GHz"
+        var result = []
+        for (var i = 0; i < channels.length; ++i) {
+            if (channels[i].band === wantedBand) result.push(channels[i])
+        }
+        return result
     }
 
     function currentChannelIndex() {
-        var list = currentBandChannels()
+        var list = bandChannels()
         for (var i = 0; i < list.length; ++i) if (Number(list[i].channel) === Number(radio.channel)) return i
         for (var j = 0; j < list.length; ++j) if (!list[j].disabled) return j
         return 0
     }
 
     function commitChannel(index) {
-        var list = currentBandChannels()
+        var list = bandChannels()
         if (!monitorMode || protectedView || index < 0 || index >= list.length) return
-        var ch = list[index]
-        if (ch.disabled) {
-            addActivity("Channel " + ch.channel + " is disabled by the kernel/regulatory state")
+        if (list[index].disabled) {
+            log("Channel " + list[index].channel + " is disabled by kernel/regulatory state")
             return
         }
-        runAction("channel", ch.channel)
+        runAction("channel", list[index].channel)
     }
 
-    function stepChannel(delta) {
-        var list = currentBandChannels()
-        if (list.length === 0) return
+    function stepChannel(direction) {
+        var list = bandChannels()
         var index = currentChannelIndex()
         var next = index
         do {
-            next += delta
+            next += direction
             if (next < 0 || next >= list.length) return
         } while (list[next].disabled)
         commitChannel(next)
@@ -231,11 +224,11 @@ ShellRoot {
         var rxp = Number(t.rx_packets) || 0
         var txp = Number(t.tx_packets) || 0
         if (lastTelemetryTime > 0 && time > lastTelemetryTime && rx >= lastRxBytes && tx >= lastTxBytes) {
-            var seconds = (time - lastTelemetryTime) / 1000.0
-            rxRate = (rx - lastRxBytes) / seconds
-            txRate = (tx - lastTxBytes) / seconds
-            rxPacketRate = (rxp - lastRxPackets) / seconds
-            txPacketRate = (txp - lastTxPackets) / seconds
+            var dt = (time - lastTelemetryTime) / 1000.0
+            rxRate = (rx - lastRxBytes) / dt
+            txRate = (tx - lastTxBytes) / dt
+            rxPacketRate = (rxp - lastRxPackets) / dt
+            txPacketRate = (txp - lastTxPackets) / dt
             trafficGraph.pushSample(rxRate, txRate)
         }
         lastTelemetryTime = time
@@ -245,9 +238,19 @@ ShellRoot {
         lastTxPackets = txp
     }
 
+    function refreshFast() {
+        if (!statusProcess.running) statusProcess.exec(["wifilab", "status", "--json"])
+        if (!radioProcess.running) radioProcess.exec(["wifilab", "radio", "--json"])
+    }
+
+    function refreshSlow() {
+        if (!adapterProcess.running) adapterProcess.exec(["wifilab", "--json"])
+        if (!channelProcess.running) channelProcess.exec(["wifilab", "channels", "--json"])
+    }
+
     Process {
         id: themeProcess
-        stdout: StdioCollector { onStreamFinished: app.applyDmsTheme(app.json(text, {})) }
+        stdout: StdioCollector { onStreamFinished: app.applyDmsTheme(app.parseJson(text, {})) }
         Component.onCompleted: exec(["cat", Quickshell.env("HOME") + "/.cache/DankMaterialShell/dms-colors.json"])
     }
 
@@ -259,45 +262,50 @@ ShellRoot {
 
     Process {
         id: adapterProcess
-        stdout: StdioCollector { onStreamFinished: app.applyAdapters(app.json(text, { adapters: [] })) }
+        stdout: StdioCollector { onStreamFinished: app.applyAdapters(app.parseJson(text, { adapters: [] })) }
     }
 
     Process {
         id: statusProcess
         stdout: StdioCollector {
             onStreamFinished: {
-                var oldPresent = app.status.present === true
                 var oldIface = app.status.interface || ""
-                app.status = app.json(text, { selected: false, present: false })
+                var oldPresent = app.status.present === true
+                app.status = app.parseJson(text, { selected: false, present: false })
                 if (!app.inspectingProtected && app.status.present && (!oldPresent || oldIface !== app.status.interface))
-                    app.addActivity("Selected device matched at " + app.status.interface + " / " + (app.status.phy || "unknown PHY"))
+                    app.log("Selected identity matched at " + app.status.interface + " / " + (app.status.phy || "unknown PHY"))
             }
         }
     }
 
     Process {
         id: radioProcess
-        stdout: StdioCollector { onStreamFinished: app.radio = app.json(text, { present: false, channel: 0, frequency_mhz: 0, band: "unknown" }) }
+        stdout: StdioCollector { onStreamFinished: app.radio = app.parseJson(text, { present: false, channel: 0, frequency_mhz: 0, band: "unknown" }) }
     }
 
     Process {
         id: channelProcess
-        stdout: StdioCollector { onStreamFinished: app.channels = app.json(text, { channels: [] }).channels || [] }
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var parsed = app.parseJson(text, { channels: [] })
+                app.channels = parsed.channels || []
+            }
+        }
     }
 
     Process {
         id: telemetryProcess
-        stdout: StdioCollector { onStreamFinished: app.applyTelemetry(app.json(text, { present: false })) }
+        stdout: StdioCollector { onStreamFinished: app.applyTelemetry(app.parseJson(text, { present: false })) }
     }
 
     Process {
         id: protocolProcess
         stdout: StdioCollector {
             onStreamFinished: {
-                var p = app.json(text, { available: false, permitted: false, protocols: [] })
+                var p = app.parseJson(text, { available: false, permitted: false, protocols: [] })
                 app.protocolAvailable = p.available === true
                 app.protocolPermitted = p.permitted === true
-                app.protocolSamplePackets = p.sample_packets || 0
+                app.protocolSamplePackets = Number(p.sample_packets) || 0
                 app.protocols = p.protocols || []
             }
         }
@@ -308,12 +316,10 @@ ShellRoot {
         stdout: StdioCollector { id: selectOut }
         stderr: StdioCollector { id: selectErr }
         onExited: function(code, status) {
-            if (code === 0) app.addActivity(selectOut.text.trim().split("\n")[0] || "Adapter selected")
-            else app.addActivity("Selection failed: " + (selectErr.text.trim() || "unknown error"))
+            app.log(code === 0 ? "Adapter selection updated" : "Selection failed: " + (selectErr.text.trim() || "unknown error"))
             app.inspectingProtected = false
-            statusProcess.exec(["wifilab", "status", "--json"])
-            adapterProcess.exec(["wifilab", "--json"])
-            channelProcess.exec(["wifilab", "channels", "--json"])
+            app.refreshFast()
+            app.refreshSlow()
         }
     }
 
@@ -323,14 +329,9 @@ ShellRoot {
         stderr: StdioCollector { id: actionErr }
         onExited: function(code, status) {
             app.actionBusy = false
-            if (code === 0) app.addActivity(actionOut.text.trim().split("\n")[0] || "Action completed")
-            else {
-                app.actionError = actionErr.text.trim() || "Operation failed"
-                app.addActivity("Action failed: " + app.actionError)
-            }
-            statusProcess.exec(["wifilab", "status", "--json"])
-            radioProcess.exec(["wifilab", "radio", "--json"])
-            adapterProcess.exec(["wifilab", "--json"])
+            app.log(code === 0 ? (actionOut.text.trim().split("\n")[0] || "Action completed") : "Action failed: " + (actionErr.text.trim() || "unknown error"))
+            app.refreshFast()
+            app.refreshSlow()
         }
     }
 
@@ -340,47 +341,24 @@ ShellRoot {
         stderr: StdioCollector { id: doctorErr }
         onExited: function(code, status) {
             app.diagnosticsExpanded = true
-            app.addActivity(code === 0 ? "Doctor checks passed" : "Doctor found a missing required dependency")
+            app.log(code === 0 ? "Doctor checks passed" : "Doctor found a required dependency problem")
         }
     }
 
     Timer {
-        interval: 1000
-        repeat: true
-        running: true
-        triggeredOnStart: true
-        onTriggered: {
-            if (!telemetryProcess.running) telemetryProcess.exec(["wifilab", "telemetry", "--json"])
-        }
+        interval: 1000; repeat: true; running: true; triggeredOnStart: true
+        onTriggered: if (!telemetryProcess.running) telemetryProcess.exec(["wifilab", "telemetry", "--json"])
     }
-
     Timer {
-        interval: 2000
-        repeat: true
-        running: true
-        triggeredOnStart: true
-        onTriggered: {
-            if (!statusProcess.running) statusProcess.exec(["wifilab", "status", "--json"])
-            if (!radioProcess.running) radioProcess.exec(["wifilab", "radio", "--json"])
-        }
+        interval: 2000; repeat: true; running: true; triggeredOnStart: true
+        onTriggered: app.refreshFast()
     }
-
     Timer {
-        interval: 4000
-        repeat: true
-        running: true
-        triggeredOnStart: true
-        onTriggered: {
-            if (!adapterProcess.running) adapterProcess.exec(["wifilab", "--json"])
-            if (!channelProcess.running) channelProcess.exec(["wifilab", "channels", "--json"])
-        }
+        interval: 4000; repeat: true; running: true; triggeredOnStart: true
+        onTriggered: app.refreshSlow()
     }
-
     Timer {
-        interval: 6000
-        repeat: true
-        running: app.activeTab === 1
-        triggeredOnStart: true
+        interval: 6000; repeat: true; running: app.activeTab === 1; triggeredOnStart: true
         onTriggered: if (!protocolProcess.running) protocolProcess.exec(["wifilab", "protocols", "--json"])
     }
 
@@ -388,78 +366,60 @@ ShellRoot {
         id: win
         visible: true
         title: "WiFiLab"
-        implicitWidth: 1080
-        implicitHeight: 720
-        minimumSize: Qt.size(880, 620)
+        implicitWidth: 1040
+        implicitHeight: 700
+        minimumSize: Qt.size(860, 600)
         maximumSize: Qt.size(1280, 860)
         color: "transparent"
         surfaceFormat.opaque: false
         onClosed: Qt.quit()
 
-        BackgroundEffect.blurRegion: Region { item: glassRoot }
+        BackgroundEffect.blurRegion: Region { item: rootPanel }
 
         Rectangle {
-            id: glassRoot
+            id: rootPanel
             anchors.fill: parent
             radius: 24
-            color: app.monitorMode && !app.inspectingProtected ? Qt.rgba(0.025, 0.08, 0.045, 0.91) : app.surface
+            color: app.monitorMode && !app.inspectingProtected
+                   ? Qt.rgba(0.02, 0.075, 0.04, 0.91)
+                   : Qt.rgba(app.surface.r, app.surface.g, app.surface.b, 0.90)
             border.width: 1
-            border.color: app.monitorMode && !app.inspectingProtected ? Qt.rgba(0.26, 0.91, 0.37, 0.48) : app.outline
+            border.color: app.monitorMode && !app.inspectingProtected ? Qt.rgba(app.monitorAccent.r, app.monitorAccent.g, app.monitorAccent.b, 0.50) : app.outline
             clip: true
 
-            Behavior on color { ColorAnimation { duration: 260 } }
-            Behavior on border.color { ColorAnimation { duration: 260 } }
+            Behavior on color { ColorAnimation { duration: 240 } }
+            Behavior on border.color { ColorAnimation { duration: 240 } }
 
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 18
-                spacing: 14
+                spacing: 12
 
-                // Header
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 50
-                    spacing: 12
+                    Layout.preferredHeight: 48
+                    spacing: 10
 
                     MouseArea {
-                        Layout.preferredWidth: 230
+                        Layout.preferredWidth: 210
                         Layout.fillHeight: true
-                        onPressed: win.startSystemMove()
                         cursorShape: Qt.SizeAllCursor
-
+                        onPressed: win.startSystemMove()
                         Row {
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 10
-                            Text {
-                                text: "wifi_tethering"
-                                color: app.accent
-                                font.family: "Material Symbols Rounded"
-                                font.pixelSize: 27
-                            }
-                            Text {
-                                text: "WiFiLab"
-                                color: app.textPrimary
-                                font.pixelSize: 24
-                                font.bold: true
-                                anchors.verticalCenter: parent.verticalCenter
-                            }
-                            Rectangle {
-                                width: 54; height: 25; radius: 10
-                                color: Qt.rgba(app.accent.r, app.accent.g, app.accent.b, 0.08)
-                                border.width: 1
-                                border.color: Qt.rgba(app.accent.r, app.accent.g, app.accent.b, 0.18)
-                                Text { anchors.centerIn: parent; text: "v0.1"; color: app.textMuted; font.pixelSize: 11 }
-                            }
+                            spacing: 9
+                            Text { text: "wifi_tethering"; color: app.accent; font.family: "Material Symbols Rounded"; font.pixelSize: 26 }
+                            Text { text: "WiFiLab"; color: app.textPrimary; font.pixelSize: 23; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
                         }
                     }
 
                     Item { Layout.fillWidth: true }
 
                     Rectangle {
-                        Layout.preferredWidth: 280
-                        Layout.preferredHeight: 42
+                        Layout.preferredWidth: 270
+                        Layout.preferredHeight: 40
                         radius: 14
-                        color: Qt.rgba(0, 0, 0, 0.18)
+                        color: Qt.rgba(0, 0, 0, 0.20)
                         border.width: 1
                         border.color: app.outline
                         Row {
@@ -471,22 +431,10 @@ ShellRoot {
                                 delegate: Button {
                                     required property int index
                                     required property string modelData
-                                    width: 132; height: 34
-                                    text: modelData
-                                    hoverEnabled: true
+                                    width: 129; height: 32
                                     onClicked: app.activeTab = index
-                                    contentItem: Text {
-                                        text: parent.text
-                                        color: app.activeTab === index ? app.textPrimary : app.textMuted
-                                        font.pixelSize: 12; font.bold: app.activeTab === index
-                                        horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
-                                    }
-                                    background: Rectangle {
-                                        radius: 11
-                                        color: app.activeTab === index ? Qt.rgba(app.accent.r, app.accent.g, app.accent.b, 0.14) : "transparent"
-                                        border.width: app.activeTab === index ? 1 : 0
-                                        border.color: app.accent
-                                    }
+                                    contentItem: Text { text: modelData; color: app.activeTab === index ? app.textPrimary : app.textMuted; font.bold: app.activeTab === index; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                    background: Rectangle { radius: 10; color: app.activeTab === index ? Qt.rgba(app.accent.r, app.accent.g, app.accent.b, 0.14) : "transparent"; border.width: app.activeTab === index ? 1 : 0; border.color: app.accent }
                                 }
                             }
                         }
@@ -496,28 +444,22 @@ ShellRoot {
 
                     Button {
                         visible: app.monitorMode && !app.inspectingProtected
-                        text: "Restore"
-                        hoverEnabled: true
+                        text: "RESTORE"
+                        enabled: app.helperReady && !app.actionBusy
                         onClicked: app.runAction("restore", 0)
                         contentItem: Text { text: parent.text; color: app.error; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                        background: Rectangle { radius: 12; color: Qt.rgba(app.error.r, app.error.g, app.error.b, 0.10); border.width: 1; border.color: app.error }
+                        background: Rectangle { radius: 11; color: Qt.rgba(app.error.r, app.error.g, app.error.b, 0.10); border.width: 1; border.color: app.error }
                     }
 
-                    IconButton {
-                        symbol: "health_and_safety"
-                        tip: "Run WiFiLab doctor"
-                        foreground: app.success
-                        onClicked: doctorProcess.exec(["wifilab", "doctor"])
-                    }
-                    IconButton { symbol: "refresh"; tip: "Refresh adapters"; onClicked: { adapterProcess.exec(["wifilab", "--json"]); statusProcess.exec(["wifilab", "status", "--json"]); } }
-                    IconButton { symbol: "close"; tip: "Close WiFiLab UI (radio state persists)"; onClicked: Qt.quit() }
+                    IconButton { symbol: "health_and_safety"; tip: "Run WiFiLab doctor"; foreground: app.success; onClicked: doctorProcess.exec(["wifilab", "doctor"]) }
+                    IconButton { symbol: "refresh"; tip: "Refresh adapters"; onClicked: { app.refreshFast(); app.refreshSlow(); } }
+                    IconButton { symbol: "close"; tip: "Close UI; adapter state persists"; onClicked: Qt.quit() }
                 }
 
-                // Adapter / safety strip
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 84
-                    spacing: 12
+                    Layout.preferredHeight: 82
+                    spacing: 10
 
                     GlassCard {
                         Layout.fillWidth: true
@@ -531,206 +473,161 @@ ShellRoot {
                             model: app.adapterLabels
                             currentIndex: app.inspectedIndex
                             onActivated: function(index) { app.inspectAdapter(index) }
-                            contentItem: Column {
-                                leftPadding: 10
-                                anchors.verticalCenter: parent.verticalCenter
-                                Text { text: app.currentDeviceName; color: app.textPrimary; font.pixelSize: 15; font.bold: true; elide: Text.ElideRight; width: adapterCombo.width - 70 }
-                                Text { text: app.currentDriver + "  •  runtime " + app.currentInterface + " / " + app.currentPhy; color: app.textMuted; font.pixelSize: 11; elide: Text.ElideRight; width: adapterCombo.width - 70 }
-                            }
-                            background: Rectangle { color: "transparent"; radius: 12; border.width: 0 }
-                            popup: Popup {
-                                y: adapterCombo.height + 4
-                                width: adapterCombo.width
-                                implicitHeight: Math.min(contentItem.implicitHeight + 8, 260)
-                                padding: 4
-                                background: Rectangle { color: app.surfaceHighest; radius: 14; border.width: 1; border.color: app.outline }
-                                contentItem: ListView {
-                                    clip: true
-                                    implicitHeight: contentHeight
-                                    model: adapterCombo.popup.visible ? adapterCombo.delegateModel : null
-                                    currentIndex: adapterCombo.highlightedIndex
-                                }
-                            }
                         }
                     }
 
                     GlassCard {
-                        Layout.preferredWidth: 230
+                        Layout.preferredWidth: 220
                         Layout.fillHeight: true
                         fillColor: app.surfaceHigh
                         outlineColor: app.outline
                         Row {
                             anchors.centerIn: parent
-                            spacing: 10
+                            spacing: 9
                             StatusDot { dotColor: app.inspectingProtected ? app.warning : (app.status.present ? app.success : app.warning); pulse: !app.inspectingProtected && app.status.selected && !app.status.present }
                             Column {
-                                Text { text: app.inspectingProtected ? "System protected" : (app.status.present ? "Selected device matched" : "Selected device absent"); color: app.inspectingProtected ? app.warning : (app.status.present ? app.success : app.warning); font.pixelSize: 13; font.bold: true }
-                                Text { text: app.inspectingProtected ? "Mutation controls disabled" : (app.status.present ? "Persistent physical identity" : "Auto-retry is active"); color: app.textMuted; font.pixelSize: 11 }
+                                Text { text: app.inspectingProtected ? "System protected" : (app.status.present ? "Physical identity matched" : "Selected device absent"); color: app.inspectingProtected ? app.warning : (app.status.present ? app.success : app.warning); font.bold: true; font.pixelSize: 12 }
+                                Text { text: app.inspectingProtected ? "Controls disabled" : (app.status.present ? app.currentInterface + " / " + app.currentPhy : "Watching for replug"); color: app.textMuted; font.pixelSize: 10 }
                             }
                         }
                     }
 
                     GlassCard {
-                        Layout.preferredWidth: 260
+                        Layout.preferredWidth: 225
                         Layout.fillHeight: true
                         fillColor: app.surfaceHigh
                         outlineColor: app.outline
                         Row {
                             anchors.centerIn: parent
-                            spacing: 10
-                            Text { text: "shield"; color: app.success; font.family: "Material Symbols Rounded"; font.pixelSize: 25 }
+                            spacing: 9
+                            Text { text: "shield"; color: app.success; font.family: "Material Symbols Rounded"; font.pixelSize: 24 }
                             Column {
-                                Text { text: "System link protected"; color: app.success; font.pixelSize: 13; font.bold: true }
-                                Text { text: "Connected/default-route guard"; color: app.textMuted; font.pixelSize: 11 }
+                                Text { text: "System link protected"; color: app.success; font.bold: true; font.pixelSize: 12 }
+                                Text { text: "NM + default-route guard"; color: app.textMuted; font.pixelSize: 10 }
                             }
-                            StatusDot { dotColor: app.success }
                         }
                     }
 
                     GlassCard {
-                        Layout.preferredWidth: 94
+                        Layout.preferredWidth: 88
                         Layout.fillHeight: true
                         fillColor: app.surfaceHigh
                         outlineColor: app.outline
-                        Text { anchors.centerIn: parent; text: "REG: " + (app.status.regdomain || "—"); color: app.status.regdomain ? app.success : app.textMuted; font.bold: true }
+                        Text { anchors.centerIn: parent; text: "REG: " + (app.status.regdomain || "—"); color: app.status.regdomain ? app.success : app.textMuted; font.bold: true; font.pixelSize: 11 }
                     }
                 }
 
-                // Device-absent state
                 GlassCard {
                     visible: !app.inspectingProtected && app.status.selected && !app.status.present
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    fillColor: Qt.rgba(app.warning.r, app.warning.g, app.warning.b, 0.07)
-                    outlineColor: Qt.rgba(app.warning.r, app.warning.g, app.warning.b, 0.55)
-
+                    fillColor: app.surfaceHigh
+                    outlineColor: app.warning
                     Column {
                         anchors.centerIn: parent
-                        spacing: 12
+                        spacing: 10
                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: "usb_off"; color: app.warning; font.family: "Material Symbols Rounded"; font.pixelSize: 46 }
                         Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Selected adapter not present"; color: app.textPrimary; font.pixelSize: 20; font.bold: true }
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "WiFiLab is watching for the saved physical identity and will recover automatically after replug."; color: app.textMuted; font.pixelSize: 12 }
-                        Button {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Choose another adapter"
-                            onClicked: adapterCombo.popup.open()
-                        }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "WiFiLab is watching the saved physical identity and will recover automatically after replug."; color: app.textMuted; font.pixelSize: 11 }
                     }
                 }
 
-                // Main tab content
                 StackLayout {
                     visible: app.inspectingProtected || !app.status.selected || app.status.present
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     currentIndex: app.activeTab
 
-                    // CONTROL TAB
                     Item {
                         RowLayout {
                             anchors.fill: parent
-                            spacing: 14
+                            spacing: 12
 
                             ColumnLayout {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                spacing: 12
+                                spacing: 10
 
                                 GlassCard {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 190
+                                    Layout.preferredHeight: 180
                                     fillColor: app.surfaceHigh
                                     outlineColor: app.monitorMode && !app.protectedView ? app.monitorAccent : app.outline
-
                                     Column {
                                         anchors.fill: parent
-                                        anchors.margins: 18
-                                        spacing: 12
-                                        Text { text: "MODE"; color: app.textMuted; font.pixelSize: 11; font.bold: true }
+                                        anchors.margins: 17
+                                        spacing: 10
+                                        Text { text: "MODE"; color: app.textMuted; font.pixelSize: 10; font.bold: true }
                                         Rectangle {
-                                            width: parent.width
-                                            height: 82
-                                            radius: 28
-                                            color: Qt.rgba(0, 0, 0, 0.25)
-                                            border.width: 1
-                                            border.color: app.outline
+                                            width: parent.width; height: 80; radius: 27
+                                            color: Qt.rgba(0, 0, 0, 0.24)
+                                            border.width: 1; border.color: app.outline
                                             Row {
-                                                anchors.fill: parent
-                                                anchors.margins: 5
-                                                spacing: 4
+                                                anchors.fill: parent; anchors.margins: 5; spacing: 4
                                                 Button {
                                                     width: (parent.width - 4) / 2; height: parent.height
-                                                    enabled: !app.actionBusy && app.helperReady && !app.protectedView && app.status.present
+                                                    enabled: app.helperReady && !app.actionBusy && !app.protectedView && app.status.present
                                                     onClicked: if (app.monitorMode) app.runAction("restore", 0)
-                                                    contentItem: Text { text: "MAN"; color: !app.monitorMode ? app.textPrimary : app.textMuted; font.pixelSize: 22; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                                    background: Rectangle { radius: 24; color: !app.monitorMode ? Qt.rgba(app.dmsPrimary.r, app.dmsPrimary.g, app.dmsPrimary.b, 0.13) : "transparent"; border.width: !app.monitorMode ? 1 : 0; border.color: app.dmsPrimary }
+                                                    contentItem: Text { text: "MAN"; color: !app.monitorMode ? app.textPrimary : app.textMuted; font.pixelSize: 21; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                                    background: Rectangle { radius: 23; color: !app.monitorMode ? Qt.rgba(app.dmsPrimary.r, app.dmsPrimary.g, app.dmsPrimary.b, 0.13) : "transparent"; border.width: !app.monitorMode ? 1 : 0; border.color: app.dmsPrimary }
                                                 }
                                                 Button {
                                                     width: (parent.width - 4) / 2; height: parent.height
-                                                    enabled: !app.actionBusy && app.helperReady && !app.protectedView && app.status.present
+                                                    enabled: app.helperReady && !app.actionBusy && !app.protectedView && app.status.present
                                                     onClicked: if (!app.monitorMode) app.requestMonitor()
-                                                    contentItem: Text { text: "MON"; color: app.monitorMode ? app.monitorAccent : app.textMuted; font.pixelSize: 22; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                                    background: Rectangle { radius: 24; color: app.monitorMode ? Qt.rgba(app.monitorAccent.r, app.monitorAccent.g, app.monitorAccent.b, 0.14) : "transparent"; border.width: app.monitorMode ? 1 : 0; border.color: app.monitorAccent }
+                                                    contentItem: Text { text: "MON"; color: app.monitorMode ? app.monitorAccent : app.textMuted; font.pixelSize: 21; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
+                                                    background: Rectangle { radius: 23; color: app.monitorMode ? Qt.rgba(app.monitorAccent.r, app.monitorAccent.g, app.monitorAccent.b, 0.14) : "transparent"; border.width: app.monitorMode ? 1 : 0; border.color: app.monitorAccent }
                                                 }
                                             }
                                         }
                                         Row {
                                             anchors.horizontalCenter: parent.horizontalCenter
-                                            spacing: 8
+                                            spacing: 7
                                             StatusDot { dotColor: app.protectedView ? app.warning : (app.monitorMode ? app.monitorAccent : app.dmsPrimary); pulse: app.monitorMode }
-                                            Text { text: app.protectedView ? "Protected adapter — mutation disabled" : (app.monitorMode ? "Monitor mode active • NetworkManager unmanaged" : "Managed mode • NetworkManager " + app.currentNmState); color: app.protectedView ? app.warning : (app.monitorMode ? app.monitorAccent : app.textMuted); font.pixelSize: 12 }
+                                            Text { text: app.protectedView ? "Protected adapter — mutation disabled" : (app.monitorMode ? "Monitor active • NM unmanaged" : "Managed • NM " + app.currentNmState); color: app.protectedView ? app.warning : (app.monitorMode ? app.monitorAccent : app.textMuted); font.pixelSize: 11 }
                                         }
                                     }
                                 }
 
                                 GlassCard {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 205
+                                    Layout.preferredHeight: 190
                                     fillColor: app.surfaceHigh
                                     outlineColor: app.outline
-
                                     Column {
                                         anchors.fill: parent
-                                        anchors.margins: 18
-                                        spacing: 9
+                                        anchors.margins: 16
+                                        spacing: 8
                                         Row {
                                             width: parent.width
-                                            Text { text: "CHANNEL  •  " + (app.radio.band || "unknown"); color: app.textMuted; font.pixelSize: 11; font.bold: true }
+                                            Text { text: "CHANNEL  •  " + (app.radio.band || "unknown"); color: app.textMuted; font.pixelSize: 10; font.bold: true }
                                             Item { width: parent.width - 260; height: 1 }
-                                            Text { text: app.radio.channel > 0 ? ("CH " + app.radio.channel + "  •  " + app.radio.frequency_mhz + " MHz") : "No fixed channel"; color: app.textPrimary; font.pixelSize: 12 }
+                                            Text { text: app.radio.channel > 0 ? ("CH " + app.radio.channel + "  •  " + app.radio.frequency_mhz + " MHz") : "No fixed channel"; color: app.textPrimary; font.pixelSize: 11 }
                                         }
                                         Row {
                                             width: parent.width
-                                            spacing: 10
-                                            Button { width: 44; height: 40; text: "−"; enabled: app.monitorMode && !app.protectedView; onClicked: app.stepChannel(-1) }
+                                            spacing: 9
+                                            Button { width: 42; height: 38; text: "−"; enabled: app.monitorMode && !app.protectedView; onClicked: app.stepChannel(-1) }
                                             Slider {
                                                 id: channelSlider
-                                                width: parent.width - 108
+                                                width: parent.width - 102
                                                 from: 0
-                                                to: Math.max(0, app.currentBandChannels().length - 1)
+                                                to: Math.max(0, app.bandChannels().length - 1)
                                                 stepSize: 1
                                                 snapMode: Slider.SnapAlways
                                                 value: app.currentChannelIndex()
-                                                enabled: app.monitorMode && !app.protectedView && app.currentBandChannels().length > 0
+                                                enabled: app.monitorMode && !app.protectedView && app.bandChannels().length > 0
                                                 onPressedChanged: if (!pressed) app.commitChannel(Math.round(value))
                                             }
-                                            Button { width: 44; height: 40; text: "+"; enabled: app.monitorMode && !app.protectedView; onClicked: app.stepChannel(1) }
+                                            Button { width: 42; height: 38; text: "+"; enabled: app.monitorMode && !app.protectedView; onClicked: app.stepChannel(1) }
                                         }
-                                        Row {
-                                            spacing: 8
-                                            Repeater {
-                                                model: app.currentBandChannels().length > 0 ? [app.currentBandChannels()[Math.round(channelSlider.value)]] : []
-                                                delegate: Row {
-                                                    required property var modelData
-                                                    spacing: 7
-                                                    Rectangle { visible: modelData.radar; width: 56; height: 25; radius: 9; color: Qt.rgba(app.warning.r, app.warning.g, app.warning.b, 0.12); Text { anchors.centerIn: parent; text: "DFS"; color: app.warning; font.pixelSize: 10; font.bold: true } }
-                                                    Rectangle { visible: modelData.no_ir; width: 62; height: 25; radius: 9; color: Qt.rgba(app.warning.r, app.warning.g, app.warning.b, 0.12); Text { anchors.centerIn: parent; text: "NO IR"; color: app.warning; font.pixelSize: 10; font.bold: true } }
-                                                    Rectangle { visible: modelData.disabled; width: 72; height: 25; radius: 9; color: Qt.rgba(app.error.r, app.error.g, app.error.b, 0.12); Text { anchors.centerIn: parent; text: "BLOCKED"; color: app.error; font.pixelSize: 10; font.bold: true } }
-                                                    Text { text: modelData.disabled ? "Kernel/regulatory disabled" : "Kernel-advertised channel"; color: app.textMuted; font.pixelSize: 11; anchors.verticalCenter: parent.verticalCenter }
-                                                }
-                                            }
+                                        Text {
+                                            property var selectedChannel: app.bandChannels().length > 0 ? app.bandChannels()[Math.round(channelSlider.value)] : ({})
+                                            text: selectedChannel.channel ? ("CH " + selectedChannel.channel + " • " + selectedChannel.frequency_mhz + " MHz" + (selectedChannel.radar ? " • DFS" : "") + (selectedChannel.no_ir ? " • NO IR" : "") + (selectedChannel.disabled ? " • BLOCKED" : "")) : "Channel information unavailable"
+                                            color: selectedChannel.disabled ? app.error : ((selectedChannel.radar || selectedChannel.no_ir) ? app.warning : app.textMuted)
+                                            font.pixelSize: 11
                                         }
-                                        Text { text: "Future: fixed / channel-hop policy"; color: app.textMuted; font.pixelSize: 10; opacity: 0.7 }
+                                        Text { text: "Kernel/regulatory state is authoritative • future: fixed/channel-hop mode"; color: app.textMuted; font.pixelSize: 9; opacity: 0.75 }
                                     }
                                 }
 
@@ -739,82 +636,68 @@ ShellRoot {
                                     Layout.fillHeight: true
                                     fillColor: app.surfaceHigh
                                     outlineColor: app.outline
-
                                     Column {
                                         anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 8
+                                        anchors.margins: 13
+                                        spacing: 7
                                         Row {
                                             width: parent.width
-                                            Text { text: "DETAILS"; color: app.textMuted; font.bold: true; font.pixelSize: 11 }
-                                            Item { width: parent.width - 130; height: 1 }
-                                            IconButton { width: 32; height: 28; symbol: app.detailsExpanded ? "expand_less" : "expand_more"; tip: "Toggle adapter details"; onClicked: app.detailsExpanded = !app.detailsExpanded }
+                                            Text { text: "DETAILS"; color: app.textMuted; font.bold: true; font.pixelSize: 10 }
+                                            Item { width: parent.width - 120; height: 1 }
+                                            IconButton { width: 30; height: 26; symbol: app.detailsExpanded ? "expand_less" : "expand_more"; tip: "Toggle adapter details"; onClicked: app.detailsExpanded = !app.detailsExpanded }
                                         }
                                         GridLayout {
                                             visible: app.detailsExpanded
-                                            columns: 2
-                                            columnSpacing: 20
-                                            rowSpacing: 6
+                                            columns: 2; columnSpacing: 16; rowSpacing: 5
+                                            Text { text: "Device"; color: app.textMuted } Text { text: app.currentDeviceName; color: app.textPrimary; elide: Text.ElideRight; Layout.fillWidth: true }
                                             Text { text: "Runtime"; color: app.textMuted } Text { text: app.currentInterface + " / " + app.currentPhy; color: app.textPrimary }
                                             Text { text: "Driver"; color: app.textMuted } Text { text: app.currentDriver; color: app.textPrimary }
-                                            Text { text: "Bus / ID"; color: app.textMuted } Text { text: (app.inspectingProtected ? app.inspectedAdapter.bus : app.status.bus) + "  " + (app.inspectingProtected ? (app.inspectedAdapter.vendor_id + ":" + app.inspectedAdapter.model_id) : ((app.status.vendor_id || "") + ":" + (app.status.model_id || ""))); color: app.textPrimary }
-                                            Text { text: "MAC (runtime)"; color: app.textMuted } Text { text: app.inspectingProtected ? (app.inspectedAdapter.mac || "—") : (app.status.mac || "—"); color: app.textPrimary }
-                                            Text { text: "Identity"; color: app.textMuted } Text { text: app.inspectingProtected ? "system/protected" : "persistent physical match"; color: app.inspectingProtected ? app.warning : app.success }
+                                            Text { text: "MAC"; color: app.textMuted } Text { text: app.inspectingProtected ? (app.inspectedAdapter.mac || "—") : (app.status.mac || "—"); color: app.textPrimary }
+                                            Text { text: "Identity"; color: app.textMuted } Text { text: app.inspectingProtected ? "system / protected" : "persistent physical match"; color: app.inspectingProtected ? app.warning : app.success }
                                         }
                                     }
                                 }
                             }
 
                             ColumnLayout {
-                                Layout.preferredWidth: 370
+                                Layout.preferredWidth: 350
                                 Layout.fillHeight: true
-                                spacing: 12
+                                spacing: 10
 
                                 GlassCard {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 150
+                                    Layout.preferredHeight: 135
                                     fillColor: app.surfaceHigh
                                     outlineColor: app.monitorMode ? app.monitorAccent : app.outline
                                     Row {
-                                        anchors.fill: parent
-                                        anchors.margins: 18
-                                        spacing: 18
+                                        anchors.fill: parent; anchors.margins: 16; spacing: 14
                                         Column {
-                                            width: parent.width - 115
-                                            spacing: 7
-                                            Text { text: "RUNTIME INTERFACE"; color: app.textMuted; font.pixelSize: 11; font.bold: true }
-                                            Text { text: app.currentInterface + "  •  " + app.currentPhy; color: app.textPrimary; font.pixelSize: 22; font.bold: true }
-                                            Text { text: "Link: " + (app.inspectingProtected ? (app.inspectedAdapter.operstate || "unknown") : (app.status.operstate || "unknown")); color: app.textMuted; font.pixelSize: 11 }
-                                            Text { text: "Driver: " + app.currentDriver; color: app.textMuted; font.pixelSize: 11 }
+                                            width: parent.width - 92; spacing: 6
+                                            Text { text: "RUNTIME INTERFACE"; color: app.textMuted; font.pixelSize: 10; font.bold: true }
+                                            Text { text: app.currentInterface + "  •  " + app.currentPhy; color: app.textPrimary; font.pixelSize: 20; font.bold: true }
+                                            Text { text: "Driver: " + app.currentDriver; color: app.textMuted; font.pixelSize: 10 }
+                                            Text { text: "NM: " + app.currentNmState; color: app.textMuted; font.pixelSize: 10 }
                                         }
-                                        Item {
-                                            width: 88; height: 88
-                                            Text { anchors.centerIn: parent; text: "cell_tower"; color: app.monitorMode ? app.monitorAccent : app.dmsPrimary; font.family: "Material Symbols Rounded"; font.pixelSize: 54 }
-                                            StatusDot { anchors.right: parent.right; anchors.top: parent.top; dotColor: app.monitorMode ? app.monitorAccent : app.dmsPrimary; pulse: app.monitorMode }
-                                        }
+                                        Text { anchors.verticalCenter: parent.verticalCenter; text: "cell_tower"; color: app.monitorMode ? app.monitorAccent : app.dmsPrimary; font.family: "Material Symbols Rounded"; font.pixelSize: 50 }
                                     }
                                 }
 
                                 GlassCard {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: app.monitorMode ? 126 : 92
-                                    fillColor: app.monitorMode ? Qt.rgba(app.error.r, app.error.g, app.error.b, 0.07) : app.surfaceHigh
-                                    outlineColor: app.monitorMode ? Qt.rgba(app.error.r, app.error.g, app.error.b, 0.50) : app.outline
+                                    Layout.preferredHeight: app.monitorMode ? 125 : 90
+                                    fillColor: app.surfaceHigh
+                                    outlineColor: app.monitorMode ? app.error : app.outline
                                     Column {
-                                        anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 8
-                                        Text { text: app.monitorMode ? "RESTORE / ROLLBACK" : "SAFETY"; color: app.monitorMode ? app.error : app.success; font.pixelSize: 11; font.bold: true }
+                                        anchors.fill: parent; anchors.margins: 13; spacing: 7
+                                        Text { text: app.monitorMode ? "RESTORE / ROLLBACK" : "PRIVILEGE BOUNDARY"; color: app.monitorMode ? app.error : app.success; font.bold: true; font.pixelSize: 10 }
                                         Button {
                                             visible: app.monitorMode
-                                            width: parent.width; height: 48
-                                            enabled: app.helperReady && !app.actionBusy && !app.protectedView
+                                            width: parent.width; height: 45
                                             text: "Restore to Managed"
+                                            enabled: app.helperReady && !app.actionBusy && !app.protectedView
                                             onClicked: app.runAction("restore", 0)
-                                            contentItem: Text { text: parent.text; color: app.error; font.bold: true; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter }
-                                            background: Rectangle { radius: 12; color: Qt.rgba(app.error.r, app.error.g, app.error.b, 0.12); border.width: 1; border.color: app.error }
                                         }
-                                        Text { visible: !app.monitorMode; text: app.helperReady ? "Privileged helper ready • default-route guard active" : "Install UI helper to enable state changes"; color: app.helperReady ? app.success : app.warning; font.pixelSize: 11; wrapMode: Text.Wrap }
+                                        Text { visible: !app.monitorMode; text: app.helperReady ? "Root-owned helper ready • polkit authentication on mutation" : "Read-only UI • install helper to enable mutations"; color: app.helperReady ? app.success : app.warning; font.pixelSize: 10; wrapMode: Text.Wrap; width: parent.width }
                                     }
                                 }
 
@@ -824,44 +707,42 @@ ShellRoot {
                                     fillColor: app.surfaceHigh
                                     outlineColor: app.outline
                                     Column {
-                                        anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 7
+                                        anchors.fill: parent; anchors.margins: 13; spacing: 6
                                         Row {
                                             width: parent.width
-                                            Text { text: "DIAGNOSTICS"; color: app.textMuted; font.bold: true; font.pixelSize: 11 }
-                                            Item { width: parent.width - 180; height: 1 }
-                                            IconButton { width: 32; height: 28; symbol: app.diagnosticsExpanded ? "expand_less" : "expand_more"; tip: "Toggle diagnostics"; onClicked: app.diagnosticsExpanded = !app.diagnosticsExpanded }
+                                            Text { text: "DIAGNOSTICS"; color: app.textMuted; font.bold: true; font.pixelSize: 10 }
+                                            Item { width: parent.width - 170; height: 1 }
+                                            IconButton { width: 30; height: 26; symbol: app.diagnosticsExpanded ? "expand_less" : "expand_more"; tip: "Toggle diagnostics"; onClicked: app.diagnosticsExpanded = !app.diagnosticsExpanded }
                                         }
                                         Column {
                                             visible: app.diagnosticsExpanded
-                                            spacing: 6
-                                            Text { text: "iw / radio: " + (app.status.present || app.inspectingProtected ? "available" : "waiting"); color: app.status.present || app.inspectingProtected ? app.success : app.warning; font.pixelSize: 11 }
-                                            Text { text: "NetworkManager: " + app.currentNmState; color: app.textPrimary; font.pixelSize: 11 }
-                                            Text { text: "monitor capability: " + (app.inspectingProtected ? app.inspectedAdapter.monitor_supported : app.status.monitor_supported); color: app.textPrimary; font.pixelSize: 11 }
-                                            Text { text: "polkit helper: " + (app.helperReady ? "ready" : "not installed"); color: app.helperReady ? app.success : app.warning; font.pixelSize: 11 }
-                                            Text { visible: doctorOut.text.length > 0; text: doctorOut.text; color: app.textMuted; font.family: "monospace"; font.pixelSize: 9; wrapMode: Text.Wrap; width: 320 }
+                                            spacing: 5
+                                            Text { text: "NetworkManager: " + app.currentNmState; color: app.textPrimary; font.pixelSize: 10 }
+                                            Text { text: "monitor capability: " + (app.inspectingProtected ? app.inspectedAdapter.monitor_supported : app.status.monitor_supported); color: app.textPrimary; font.pixelSize: 10 }
+                                            Text { text: "regdomain: " + (app.status.regdomain || "unknown"); color: app.textPrimary; font.pixelSize: 10 }
+                                            Text { text: "polkit helper: " + (app.helperReady ? "ready" : "not installed"); color: app.helperReady ? app.success : app.warning; font.pixelSize: 10 }
+                                            Text { visible: doctorOut.text.length > 0; text: doctorOut.text; color: app.textMuted; font.family: "monospace"; font.pixelSize: 8; wrapMode: Text.Wrap; width: 310 }
                                         }
                                     }
                                 }
 
                                 GlassCard {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 150
+                                    Layout.preferredHeight: 125
                                     fillColor: app.surfaceHigh
                                     outlineColor: app.outline
                                     Column {
-                                        anchors.fill: parent
-                                        anchors.margins: 14
-                                        spacing: 6
-                                        Text { text: "ACTIVITY"; color: app.textMuted; font.bold: true; font.pixelSize: 11 }
+                                        anchors.fill: parent; anchors.margins: 12; spacing: 5
+                                        Text { text: "ACTIVITY"; color: app.textMuted; font.bold: true; font.pixelSize: 10 }
                                         Repeater {
                                             model: app.activity
-                                            delegate: Row {
+                                            delegate: Text {
                                                 required property string modelData
-                                                spacing: 7
-                                                StatusDot { dotColor: index === 0 ? app.accent : app.info }
-                                                Text { text: modelData; color: index === 0 ? app.textPrimary : app.textMuted; font.pixelSize: 9; elide: Text.ElideRight; width: 315 }
+                                                text: modelData
+                                                color: index === 0 ? app.textPrimary : app.textMuted
+                                                font.pixelSize: 8
+                                                elide: Text.ElideRight
+                                                width: 315
                                             }
                                         }
                                     }
@@ -870,38 +751,32 @@ ShellRoot {
                         }
                     }
 
-                    // TRAFFIC TAB
                     Item {
                         ColumnLayout {
                             anchors.fill: parent
-                            spacing: 12
+                            spacing: 10
 
                             RowLayout {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 88
-                                spacing: 12
+                                Layout.preferredHeight: 82
+                                spacing: 10
                                 Repeater {
                                     model: [
-                                        { label: "RX", value: app.formatRate(app.rxRate), detail: app.formatPacketRate(app.rxPacketRate), color: app.info },
-                                        { label: "TX", value: app.formatRate(app.txRate), detail: app.formatPacketRate(app.txPacketRate), color: "#B98AFF" },
+                                        { label: "RX", value: app.formatRate(app.rxRate), detail: app.formatPps(app.rxPacketRate), color: app.info },
+                                        { label: "TX", value: app.formatRate(app.txRate), detail: app.formatPps(app.txPacketRate), color: "#B98AFF" },
                                         { label: "MODE", value: app.currentMode.toUpperCase(), detail: app.currentInterface, color: app.monitorMode ? app.monitorAccent : app.dmsPrimary },
-                                        { label: "PROTOCOL SAMPLE", value: String(app.protocolSamplePackets), detail: "frames / short sample", color: app.protocolPermitted ? app.success : app.warning }
+                                        { label: "PROTOCOL SAMPLE", value: String(app.protocolSamplePackets), detail: "frames / sample", color: app.protocolPermitted ? app.success : app.warning }
                                     ]
                                     delegate: GlassCard {
                                         required property var modelData
-                                        Layout.fillWidth: true
-                                        Layout.fillHeight: true
-                                        fillColor: app.surfaceHigh
-                                        outlineColor: app.outline
+                                        Layout.fillWidth: true; Layout.fillHeight: true
+                                        fillColor: app.surfaceHigh; outlineColor: app.outline
                                         Row {
-                                            anchors.fill: parent
-                                            anchors.margins: 14
-                                            spacing: 10
-                                            StatusDot { anchors.verticalCenter: parent.verticalCenter; dotColor: modelData.color }
+                                            anchors.centerIn: parent; spacing: 9
+                                            StatusDot { dotColor: modelData.color }
                                             Column {
-                                                anchors.verticalCenter: parent.verticalCenter
                                                 Text { text: modelData.label; color: app.textMuted; font.pixelSize: 9; font.bold: true }
-                                                Text { text: modelData.value; color: modelData.color; font.pixelSize: 18; font.bold: true }
+                                                Text { text: modelData.value; color: modelData.color; font.pixelSize: 17; font.bold: true }
                                                 Text { text: modelData.detail; color: app.textMuted; font.pixelSize: 9 }
                                             }
                                         }
@@ -915,14 +790,13 @@ ShellRoot {
                                 fillColor: app.surfaceHigh
                                 outlineColor: app.outline
                                 ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 16
-                                    spacing: 8
+                                    anchors.fill: parent; anchors.margins: 14; spacing: 7
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        Text { text: "LIVE INTERFACE TRAFFIC"; color: app.textMuted; font.pixelSize: 11; font.bold: true }
+                                        Text { text: "LIVE ADAPTER TRAFFIC"; color: app.textMuted; font.bold: true; font.pixelSize: 10 }
                                         Item { Layout.fillWidth: true }
-                                        Row { spacing: 14; Text { text: "● RX"; color: app.info; font.pixelSize: 10 } Text { text: "● TX"; color: "#B98AFF"; font.pixelSize: 10 } }
+                                        Text { text: "● RX"; color: app.info; font.pixelSize: 10 }
+                                        Text { text: "● TX"; color: "#B98AFF"; font.pixelSize: 10 }
                                     }
                                     TrafficGraph {
                                         id: trafficGraph
@@ -930,46 +804,40 @@ ShellRoot {
                                         Layout.fillHeight: true
                                         rxColor: app.info
                                         txColor: "#B98AFF"
-                                        gridColor: Qt.rgba(app.outline.r, app.outline.g, app.outline.b, 0.28)
+                                        gridColor: Qt.rgba(app.outline.r, app.outline.g, app.outline.b, 0.25)
                                     }
-                                    Text { text: "Source: kernel interface counters • 1 second samples • no root/capture required"; color: app.textMuted; font.pixelSize: 9 }
+                                    Text { text: "Kernel interface counters • 1 s samples • RX/TX graph requires no root or packet capture"; color: app.textMuted; font.pixelSize: 9 }
                                 }
                             }
 
                             GlassCard {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 150
+                                Layout.preferredHeight: 145
                                 fillColor: app.surfaceHigh
                                 outlineColor: app.outline
                                 RowLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 14
-                                    spacing: 16
+                                    anchors.fill: parent; anchors.margins: 13; spacing: 14
                                     ColumnLayout {
-                                        Layout.preferredWidth: 230
-                                        Text { text: "PROTOCOL MIX"; color: app.textMuted; font.pixelSize: 11; font.bold: true }
-                                        Text {
-                                            text: !app.protocolAvailable ? "tshark not installed" : (!app.protocolPermitted ? "Capture permission unavailable" : "Passive short sample")
-                                            color: app.protocolPermitted ? app.success : app.warning
-                                            font.pixelSize: 11
-                                        }
-                                        Text { text: "No privilege escalation is performed for protocol sampling."; color: app.textMuted; font.pixelSize: 9; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                                        Layout.preferredWidth: 220
+                                        Text { text: "PROTOCOL MIX"; color: app.textMuted; font.bold: true; font.pixelSize: 10 }
+                                        Text { text: !app.protocolAvailable ? "tshark not installed" : (!app.protocolPermitted ? "Capture permission unavailable" : "Passive short sample"); color: app.protocolPermitted ? app.success : app.warning; font.pixelSize: 10 }
+                                        Text { text: "Protocol sampling never invokes pkexec. Existing dumpcap permissions only."; color: app.textMuted; font.pixelSize: 9; wrapMode: Text.Wrap; Layout.fillWidth: true }
                                     }
-                                    Rectangle { Layout.fillHeight: true; width: 1; color: app.outline }
+                                    Rectangle { width: 1; Layout.fillHeight: true; color: app.outline }
                                     Flow {
                                         Layout.fillWidth: true
-                                        spacing: 8
+                                        spacing: 7
                                         Repeater {
                                             model: app.protocols
                                             delegate: Rectangle {
                                                 required property var modelData
-                                                width: protocolText.implicitWidth + 20; height: 32; radius: 11
-                                                color: Qt.rgba(app.info.r, app.info.g, app.info.b, 0.08)
-                                                border.width: 1; border.color: Qt.rgba(app.info.r, app.info.g, app.info.b, 0.28)
-                                                Text { id: protocolText; anchors.centerIn: parent; text: modelData.name + "  " + modelData.count; color: app.textPrimary; font.pixelSize: 10 }
+                                                width: protocolLabel.implicitWidth + 18; height: 30; radius: 10
+                                                color: Qt.rgba(app.info.r, app.info.g, app.info.b, 0.09)
+                                                border.width: 1; border.color: Qt.rgba(app.info.r, app.info.g, app.info.b, 0.30)
+                                                Text { id: protocolLabel; anchors.centerIn: parent; text: modelData.name + "  " + modelData.count; color: app.textPrimary; font.pixelSize: 9 }
                                             }
                                         }
-                                        Text { visible: app.protocols.length === 0; text: app.protocolPermitted ? "No protocol frames observed in this sample." : "Protocol details will appear here when tshark/dumpcap permissions allow passive capture."; color: app.textMuted; font.pixelSize: 10; width: 500; wrapMode: Text.Wrap }
+                                        Text { visible: app.protocols.length === 0; width: 480; text: app.protocolPermitted ? "No protocol frames observed in this sample." : "Protocol details appear here when tshark/dumpcap capture permission is available."; color: app.textMuted; font.pixelSize: 9; wrapMode: Text.Wrap }
                                     }
                                 }
                             }
@@ -977,18 +845,17 @@ ShellRoot {
                     }
                 }
 
-                // Footer
                 RowLayout {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 28
-                    spacing: 10
+                    Layout.preferredHeight: 24
+                    spacing: 8
                     StatusDot { dotColor: app.status.present ? app.success : app.warning }
-                    Text { text: app.status.present ? "Backend ready" : "Waiting for selected adapter"; color: app.textMuted; font.pixelSize: 10 }
+                    Text { text: app.status.present ? "Backend ready" : "Waiting for selected adapter"; color: app.textMuted; font.pixelSize: 9 }
                     Item { Layout.fillWidth: true }
                     StatusDot { dotColor: app.helperReady ? app.success : app.warning }
-                    Text { text: app.helperReady ? "Polkit helper ready" : "Read-only mode"; color: app.textMuted; font.pixelSize: 10 }
+                    Text { text: app.helperReady ? "Guarded mutations enabled" : "Read-only mode"; color: app.textMuted; font.pixelSize: 9 }
                     Item { Layout.fillWidth: true }
-                    Text { text: "AI-ready contract: JSON discovery/status/telemetry + guarded actions"; color: app.textMuted; font.pixelSize: 9 }
+                    Text { text: "Agent-ready JSON contract • UI remains unprivileged"; color: app.textMuted; font.pixelSize: 9 }
                 }
             }
         }
@@ -997,16 +864,16 @@ ShellRoot {
             id: riskDialog
             modal: true
             anchors.centerIn: parent
-            title: "Confirm monitor-mode transition"
+            title: "Confirm monitor mode"
             standardButtons: Dialog.Ok | Dialog.Cancel
             onAccepted: app.runAction("monitor", 0)
             background: Rectangle { color: app.surfaceHighest; radius: 18; border.width: 1; border.color: app.warning }
             contentItem: Text {
-                width: 420
-                text: "This adapter is not classified as the known idle USB lab-candidate. The backend will still revalidate live wireless state and default-route ownership before mutation. Continue?"
+                width: 400
+                padding: 16
                 color: app.textPrimary
                 wrapMode: Text.Wrap
-                padding: 16
+                text: "This adapter is not classified as the known idle USB lab candidate. The privileged helper will still revalidate live wireless state, NetworkManager activity, and default-route ownership before changing anything."
             }
         }
     }
