@@ -6,7 +6,7 @@ Rectangle {
     property color fillColor: "#161A22"
     property color outlineColor: "#4B5563"
     property real cornerRadius: 18
-    property real glassAlpha: 0.78
+    property real glassAlpha: 0.955
 
     radius: cornerRadius
     color: Qt.rgba(fillColor.r, fillColor.g, fillColor.b, Math.min(fillColor.a, glassAlpha))
