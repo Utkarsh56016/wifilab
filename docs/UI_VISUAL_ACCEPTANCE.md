@@ -28,12 +28,14 @@ Validated characteristics:
 
 The accepted geometry must not be changed to obtain transparency. Glass styling is handled independently through:
 
-- mild QML surface translucency
-- niri compositor-side background blur
-- restrained compositor opacity
-- low noise and near-neutral background saturation
+- card alpha: approximately 0.93
+- adapter-selector surface alpha: approximately 0.94
+- niri window opacity: 0.965
+- niri compositor-side non-xray blur
+- niri background noise: 0.004
+- niri background saturation: 1.08
 
-Readability takes priority over transparency.
+These values are intentionally restrained. They expose enough blurred desktop background to read as glass while keeping operational data legible. Readability takes priority over transparency.
 
 ## Hard rules
 
