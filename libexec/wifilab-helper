@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+# WiFiLab privileged helper.
+# Install as a root-owned executable under /usr/lib/wifilab/wifilab-helper.
+# This helper deliberately accepts only a narrow, explicit operation set.
+
+set -euo pipefail
+
+LIB_DIR=/usr/lib/wifilab
+
+for file in discover.sh state.sh select.sh; do
+    [[ -r "$LIB_DIR/$file" ]] || {
+        printf 'wifilab-helper: missing trusted library %s/%s\n' "$LIB_DIR" "$file" >&2
+        exit 70
+    }
+done
+
+# shellcheck source=/dev/null
+source "$LIB_DIR/discover.sh"
+# shellcheck source=/dev/null
+source "$LIB_DIR/state.sh"
+# shellcheck source=/dev/null
+source "$LIB_DIR/select.sh"
+
+require_root() {
+    (( EUID == 0 )) || {
+        printf 'wifilab-helper: must be executed through polkit/pkexec\n' >&2
+        exit 77
+    }
+}
+
+validate_channel() {
+    local channel=${1-}
+    [[ $channel =~ ^[0-9]+$ ]] && (( channel >= 1 && channel <= 233 )) || {
+        printf 'wifilab-helper: invalid channel: %s\n' "${channel:-missing}" >&2
+        exit 64
+    }
+}
+
+main() {
+    local operation=${1-} iface=${2-} channel=${3-}
+
+    require_root
+
+    case "$operation" in
+        monitor|managed|restore)
+            [[ $# -eq 2 ]] || {
+                printf 'usage: wifilab-helper %s <iface>\n' "$operation" >&2
+                exit 64
+            }
+            wifilab_require_wireless_iface "$iface"
+            wifilab_refuse_system_iface "$iface"
+            case "$operation" in
+                monitor) wifilab_monitor "$iface" ;;
+                managed) wifilab_managed "$iface" ;;
+                restore) wifilab_restore "$iface" ;;
+            esac
+            ;;
+        channel)
+            [[ $# -eq 3 ]] || {
+                printf 'usage: wifilab-helper channel <iface> <channel>\n' >&2
+                exit 64
+            }
+            validate_channel "$channel"
+            wifilab_require_wireless_iface "$iface"
+            wifilab_refuse_system_iface "$iface"
+            wifilab_channel "$iface" "$channel"
+            ;;
+        *)
+            printf 'wifilab-helper: unsupported operation: %s\n' "${operation:-missing}" >&2
+            exit 64
+            ;;
+    esac
+}
+
+main "$@"
