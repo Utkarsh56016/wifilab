@@ -20,6 +20,7 @@ source "$ROOT_DIR/lib/wifilab/discover.sh"
 source "$ROOT_DIR/lib/wifilab/radio.sh"
 source "$ROOT_DIR/lib/wifilab/state.sh"
 source "$ROOT_DIR/lib/wifilab/safety.sh"
+source "$ROOT_DIR/lib/wifilab/json.sh"
 source "$ROOT_DIR/lib/wifilab/select.sh"
 source "$ROOT_DIR/lib/wifilab/telemetry.sh"
 
@@ -125,15 +126,9 @@ resolve_optional_iface() {
 }
 
 case "${1:-adapters}" in
-    adapters|list|info)
-        wifilab_discover_human
-        ;;
-    --json|json)
-        wifilab_discover_json
-        ;;
-    doctor)
-        doctor
-        ;;
+    adapters|list|info) wifilab_discover_human ;;
+    --json|json) wifilab_discover_json ;;
+    doctor) doctor ;;
     select)
         [[ $# -le 2 ]] || { usage >&2; exit 2; }
         wifilab_select "${2-}"
@@ -185,15 +180,11 @@ case "${1:-adapters}" in
                 iface=$(wifilab_resolve_selected)
                 wifilab_channel "$iface" "$2"
                 ;;
-            3)
-                wifilab_channel "$2" "$3"
-                ;;
+            3) wifilab_channel "$2" "$3" ;;
             *) usage >&2; exit 2 ;;
         esac
         ;;
-    help|-h|--help)
-        usage
-        ;;
+    help|-h|--help) usage ;;
     *)
         printf 'wifilab: unknown command: %s\n\n' "$1" >&2
         usage >&2
