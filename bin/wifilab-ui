@@ -15,7 +15,7 @@ done
 
 SCRIPT_DIR=$(cd -P -- "$(dirname -- "$SOURCE")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
-ENTRYPOINT="$ROOT_DIR/ui/quickshell/wifilab/shell.qml"
+ENTRYPOINT="$ROOT_DIR/ui/quickshell/wifilab/main.qml"
 
 command -v qs >/dev/null 2>&1 || {
     printf 'wifilab-ui: Quickshell executable `qs` was not found in PATH\n' >&2
@@ -27,10 +27,10 @@ command -v qs >/dev/null 2>&1 || {
     exit 66
 }
 
-# Foreground mode is intentionally available for debugging QML/log output.
-# No privileged helper is installed by this launcher; read-only rendering remains safe.
+# Foreground mode is intentionally available for QML/log diagnostics.
+# Privileged support is installed separately and is never implied by this launcher.
 if [[ ${WIFILAB_UI_FOREGROUND:-0} == 1 ]]; then
-    exec qs --path "$ENTRYPOINT"
+    exec qs --path "$ENTRYPOINT" --no-duplicate
 fi
 
-exec qs --daemonize --path "$ENTRYPOINT"
+exec qs --daemonize --path "$ENTRYPOINT" --no-duplicate
