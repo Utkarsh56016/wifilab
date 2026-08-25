@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
+# shellcheck source=../lib/wifilab/discover.sh
+source "$ROOT_DIR/lib/wifilab/discover.sh"
+
+usage() {
+    cat <<'EOF'
+WiFiLab
+
+Usage:
+  wifilab list
+  wifilab info
+  wifilab --json
+  wifilab doctor
+  wifilab help
+
+Commands:
+  list      Show discovered wireless adapters
+  info      Alias for list in Phase 1
+  --json    Emit machine-readable adapter discovery output
+  doctor    Check discovery dependencies without changing system state
+  help      Show this help
+
+Phase 1 is read-only. No interface state is modified.
+EOF
+}
+
+doctor() {
+    local missing=0 cmd
+    printf 'WiFiLab discovery dependencies\n\n'
+    for cmd in iw ip nmcli udevadm lspci lsusb; do
+        if command -v "$cmd" >/dev/null 2>&1; then
+            printf '  [ok]      %s -> %s\n' "$cmd" "$(command -v "$cmd")"
+        else
+            printf '  [missing] %s\n' "$cmd"
+            missing=1
+        fi
+    done
+
+    printf '\nWireless interfaces discovered: '
+    mapfile -t ifaces < <(wifilab_wireless_ifaces)
+    printf '%d\n' "${#ifaces[@]}"
+    printf 'Regulatory domain: %s\n' "$(wifilab_regdomain)"
+
+    return "$missing"
+}
+
+case "${1:-list}" in
+    list|info)
+        wifilab_discover_human
+        ;;
+    --json|json)
+        wifilab_discover_json
+        ;;
+    doctor)
+        doctor
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        printf 'wifilab: unknown command: %s\n\n' "$1" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
