@@ -23,6 +23,7 @@ source "$ROOT_DIR/lib/wifilab/safety.sh"
 source "$ROOT_DIR/lib/wifilab/json.sh"
 source "$ROOT_DIR/lib/wifilab/select.sh"
 source "$ROOT_DIR/lib/wifilab/telemetry.sh"
+source "$ROOT_DIR/lib/wifilab/capture.sh"
 
 usage() {
     cat <<'EOF'
@@ -40,6 +41,9 @@ Usage:
   wifilab channels --json
   wifilab telemetry --json
   wifilab protocols --json
+  wifilab capture status --json
+  wifilab capture run [duration_seconds] [max_kib]
+  wifilab captures --json
   wifilab monitor [iface]
   wifilab managed [iface]
   wifilab restore [iface]
@@ -71,6 +75,19 @@ Read-only UI/agent data:
   protocols --json
             Take a short passive tshark sample when existing capture permissions
             allow it. This command never escalates privileges.
+  capture status --json
+            Report whether bounded passive capture is available, permitted,
+            safe for the selected adapter, and ready in the current radio mode.
+  captures --json
+            List WiFiLab-created capture files and sizes.
+
+Capture:
+  capture run [duration_seconds] [max_kib]
+            Save one bounded passive pcapng from the selected physical adapter.
+            Defaults: 10 seconds and 10240 KiB. Allowed duration: 1..300 seconds.
+            Allowed size limit: 256..102400 KiB. Capture requires monitor mode,
+            refuses protected/default-route interfaces, and never uses sudo,
+            pkexec, or the privileged radio helper.
 
 State commands:
   monitor   Switch the selected adapter to monitor mode. An explicit iface
@@ -86,7 +103,8 @@ Safety:
   WiFiLab refuses state changes on wireless interfaces carrying an active
   NetworkManager connection or a system default route. Selection stores
   physical metadata rather than wlanX/phyX names. WiFiLab never globally
-  kills or restarts NetworkManager.
+  kills or restarts NetworkManager. Passive capture resolves that same physical
+  selection again at capture time and refuses protected interfaces.
 EOF
 }
 
@@ -106,6 +124,16 @@ doctor() {
         printf '  [optional] tshark -> %s\n' "$(command -v tshark)"
     else
         printf '  [optional] tshark -> not installed (protocol sampling disabled)\n'
+    fi
+
+    if command -v dumpcap >/dev/null 2>&1; then
+        if [[ -x $(command -v dumpcap) ]]; then
+            printf '  [optional] dumpcap -> %s (current user may execute)\n' "$(command -v dumpcap)"
+        else
+            printf '  [optional] dumpcap -> %s (current user may not execute)\n' "$(command -v dumpcap)"
+        fi
+    else
+        printf '  [optional] dumpcap -> not installed (pcap capture disabled)\n'
     fi
 
     printf '\nWireless interfaces discovered: '
@@ -158,6 +186,27 @@ case "${1:-adapters}" in
     protocols)
         [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
         wifilab_protocols_json
+        ;;
+    capture)
+        case "${2-}" in
+            status)
+                [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_capture_status_json
+                ;;
+            run)
+                case $# in
+                    2) wifilab_capture_run_json ;;
+                    3) wifilab_capture_run_json "$3" ;;
+                    4) wifilab_capture_run_json "$3" "$4" ;;
+                    *) usage >&2; exit 2 ;;
+                esac
+                ;;
+            *) usage >&2; exit 2 ;;
+        esac
+        ;;
+    captures)
+        [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
+        wifilab_captures_json
         ;;
     monitor)
         [[ $# -le 2 ]] || { usage >&2; exit 2; }
