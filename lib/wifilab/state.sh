@@ -2,6 +2,8 @@
 
 # WiFiLab state controller.
 # All state-changing operations are scoped to one validated wireless interface.
+# WIFILAB_TEST_FAIL_AFTER_TYPE=1 is a development-only fault-injection hook
+# used to verify rollback after a successful managed -> monitor type change.
 
 set -o pipefail
 
@@ -122,8 +124,6 @@ wifilab_monitor() {
         return 1
     fi
 
-    # Development-only deterministic fault injection used to validate rollback.
-    # It is inert unless explicitly set for a test invocation.
     if [[ ${WIFILAB_TEST_FAIL_AFTER_TYPE:-0} == 1 ]]; then
         printf 'wifilab: injected test failure after monitor type change; attempting rollback\n' >&2
         wifilab_monitor_rollback "$iface"
