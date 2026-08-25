@@ -14,11 +14,15 @@ window-rule {
     geometry-corner-radius 24
     clip-to-geometry true
 
-    // Keep blur subtle: QML surfaces are intentionally near-opaque for readability.
+    // A small compositor opacity reduction lets the niri blur show through
+    // without making the instrumentation difficult to read. This opacity is
+    // applied on top of the QML surface opacity, so keep it deliberately mild.
+    opacity 0.965
+
     background-effect {
         xray false
         blur true
-        noise 0.006
-        saturation 1.05
+        noise 0.004
+        saturation 1.08
     }
 }
