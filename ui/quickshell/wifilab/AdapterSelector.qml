@@ -30,7 +30,7 @@ Item {
         id: field
         anchors.fill: parent
         radius: 16
-        color: Qt.rgba(root.surfaceRaised.r, root.surfaceRaised.g, root.surfaceRaised.b, 0.965)
+        color: Qt.rgba(root.surfaceRaised.r, root.surfaceRaised.g, root.surfaceRaised.b, 0.94)
         border.width: 1
         border.color: root.opened ? root.accentColor : root.outlineColor
 
@@ -98,7 +98,7 @@ Item {
         width: root.width
         height: Math.max(66, 10 + Math.min(root.adapters.length, 5) * 58)
         radius: 16
-        color: Qt.rgba(root.surfaceColor.r, root.surfaceColor.g, root.surfaceColor.b, 0.995)
+        color: Qt.rgba(root.surfaceColor.r, root.surfaceColor.g, root.surfaceColor.b, 0.985)
         border.width: 1
         border.color: root.outlineColor
         z: 100
