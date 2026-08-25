@@ -77,6 +77,14 @@ wifilab_validate_nm_managed() {
     esac
 }
 
+wifilab_monitor_rollback() {
+    local iface=$1
+    wifilab_sudo ip link set "$iface" down >/dev/null 2>&1 || true
+    wifilab_sudo iw dev "$iface" set type managed >/dev/null 2>&1 || true
+    wifilab_sudo ip link set "$iface" up >/dev/null 2>&1 || true
+    wifilab_sudo nmcli device set "$iface" managed yes >/dev/null 2>&1 || true
+}
+
 wifilab_monitor() {
     local iface=$1 phy current
 
@@ -110,24 +118,27 @@ wifilab_monitor() {
 
     if ! wifilab_sudo iw dev "$iface" set type monitor; then
         printf 'wifilab: mode transition failed; attempting rollback to managed\n' >&2
-        wifilab_sudo iw dev "$iface" set type managed >/dev/null 2>&1 || true
-        wifilab_sudo ip link set "$iface" up >/dev/null 2>&1 || true
-        wifilab_sudo nmcli device set "$iface" managed yes >/dev/null 2>&1 || true
+        wifilab_monitor_rollback "$iface"
         return 1
+    fi
+
+    # Development-only deterministic fault injection used to validate rollback.
+    # It is inert unless explicitly set for a test invocation.
+    if [[ ${WIFILAB_TEST_FAIL_AFTER_TYPE:-0} == 1 ]]; then
+        printf 'wifilab: injected test failure after monitor type change; attempting rollback\n' >&2
+        wifilab_monitor_rollback "$iface"
+        return 70
     fi
 
     if ! wifilab_sudo ip link set "$iface" up; then
         printf 'wifilab: failed to bring %s up; attempting rollback\n' "$iface" >&2
-        wifilab_sudo ip link set "$iface" down >/dev/null 2>&1 || true
-        wifilab_sudo iw dev "$iface" set type managed >/dev/null 2>&1 || true
-        wifilab_sudo ip link set "$iface" up >/dev/null 2>&1 || true
-        wifilab_sudo nmcli device set "$iface" managed yes >/dev/null 2>&1 || true
+        wifilab_monitor_rollback "$iface"
         return 1
     fi
 
     if ! wifilab_validate_type "$iface" monitor || ! wifilab_validate_nm_managed "$iface" no; then
         printf 'wifilab: post-transition validation failed; attempting restore\n' >&2
-        wifilab_restore "$iface" >/dev/null 2>&1 || true
+        wifilab_monitor_rollback "$iface"
         return 1
     fi
 
