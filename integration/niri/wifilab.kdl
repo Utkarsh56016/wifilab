@@ -1,5 +1,5 @@
 // WiFiLab floating-window integration for niri.
-// Validated against current niri window-rule syntax.
+// Validated against current niri 26.04 window-rule syntax.
 // Install by including this file from ~/.config/niri/config.kdl after `niri validate`.
 
 window-rule {
@@ -15,7 +15,9 @@ window-rule {
     clip-to-geometry true
 
     // The QML surface is translucent. Let niri provide the actual compositor blur.
+    // Explicit xray=false avoids inheriting an xray policy from broader DMS rules.
     background-effect {
+        xray false
         blur true
         noise 0.015
         saturation 1.15
