@@ -2,11 +2,49 @@
 
 # WiFiLab privileged helper.
 # Install as a root-owned executable under /usr/lib/wifilab/wifilab-helper.
-# This helper deliberately accepts only a narrow, explicit operation set.
+#
+# Security model:
+# - Quickshell / future agents stay unprivileged.
+# - The helper accepts only a narrow operation set.
+# - A caller-supplied wlanX is treated only as a runtime hint.
+# - The helper independently resolves the invoking user's persisted physical
+#   adapter identity immediately before every operation.
+# - Safety checks are re-run after resolution and before mutation.
 
 set -euo pipefail
 
 LIB_DIR=/usr/lib/wifilab
+
+require_root() {
+    (( EUID == 0 )) || {
+        printf 'wifilab-helper: must be executed through polkit/pkexec\n' >&2
+        exit 77
+    }
+}
+
+prepare_caller_context() {
+    local caller_uid=${PKEXEC_UID-} caller_home=''
+
+    [[ $caller_uid =~ ^[0-9]+$ ]] || {
+        printf 'wifilab-helper: PKEXEC_UID is unavailable; invoke this helper through pkexec\n' >&2
+        exit 77
+    }
+
+    caller_home=$(getent passwd "$caller_uid" | awk -F: 'NR == 1 {print $6}')
+    [[ -n $caller_home && -d $caller_home ]] || {
+        printf 'wifilab-helper: could not resolve caller home for uid %s\n' "$caller_uid" >&2
+        exit 77
+    }
+
+    # WiFiLab currently stores its per-user selection under ~/.config/wifilab.
+    # Do not inherit root's HOME after pkexec or selection would resolve against
+    # /root instead of the invoking desktop user.
+    export HOME=$caller_home
+    unset XDG_CONFIG_HOME
+}
+
+require_root
+prepare_caller_context
 
 for file in discover.sh state.sh safety.sh select.sh; do
     [[ -r "$LIB_DIR/$file" ]] || {
@@ -20,13 +58,6 @@ source "$LIB_DIR/state.sh"
 source "$LIB_DIR/safety.sh"
 source "$LIB_DIR/select.sh"
 
-require_root() {
-    (( EUID == 0 )) || {
-        printf 'wifilab-helper: must be executed through polkit/pkexec\n' >&2
-        exit 77
-    }
-}
-
 validate_channel() {
     local channel=${1-}
     [[ $channel =~ ^[0-9]+$ ]] && (( channel >= 1 && channel <= 233 )) || {
@@ -35,19 +66,45 @@ validate_channel() {
     }
 }
 
-main() {
-    local operation=${1-} iface=${2-} channel=${3-}
+resolve_control_iface() {
+    local hint=${1-} resolved
 
-    require_root
+    resolved=$(wifilab_resolve_selected) || exit $?
+    wifilab_require_wireless_iface "$resolved"
+    wifilab_refuse_system_iface "$resolved"
+
+    # The hint is intentionally not authoritative. Interface names can change
+    # after USB re-enumeration; the selected physical identity is authoritative.
+    if [[ -n $hint && $hint != "$resolved" ]]; then
+        printf 'WiFiLab: runtime interface changed %s -> %s; using selected physical adapter\n' "$hint" "$resolved"
+    fi
+
+    printf '%s\n' "$resolved"
+}
+
+main() {
+    local operation=${1-} hint=${2-} channel=${3-} iface
 
     case "$operation" in
-        monitor|managed|restore)
-            [[ $# -eq 2 ]] || {
-                printf 'usage: wifilab-helper %s <iface>\n' "$operation" >&2
+        probe)
+            [[ $# -le 2 ]] || {
+                printf 'usage: wifilab-helper probe [runtime-iface-hint]\n' >&2
                 exit 64
             }
-            wifilab_require_wireless_iface "$iface"
-            wifilab_refuse_system_iface "$iface"
+            iface=$(resolve_control_iface "$hint")
+            printf 'WiFiLab privileged probe PASS\n'
+            printf '  interface : %s\n' "$iface"
+            printf '  PHY       : %s\n' "$(wifilab_phy_for_iface "$iface")"
+            printf '  driver    : %s\n' "$(wifilab_driver_for_iface "$iface")"
+            printf '  protected : false\n'
+            printf '  mutation  : none\n'
+            ;;
+        monitor|managed|restore)
+            [[ $# -eq 2 ]] || {
+                printf 'usage: wifilab-helper %s <runtime-iface-hint>\n' "$operation" >&2
+                exit 64
+            }
+            iface=$(resolve_control_iface "$hint")
             case "$operation" in
                 monitor) wifilab_monitor "$iface" ;;
                 managed) wifilab_managed "$iface" ;;
@@ -56,12 +113,11 @@ main() {
             ;;
         channel)
             [[ $# -eq 3 ]] || {
-                printf 'usage: wifilab-helper channel <iface> <channel>\n' >&2
+                printf 'usage: wifilab-helper channel <runtime-iface-hint> <channel>\n' >&2
                 exit 64
             }
             validate_channel "$channel"
-            wifilab_require_wireless_iface "$iface"
-            wifilab_refuse_system_iface "$iface"
+            iface=$(resolve_control_iface "$hint")
             wifilab_channel "$iface" "$channel"
             ;;
         *)
