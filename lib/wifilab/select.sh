@@ -79,7 +79,7 @@ wifilab_select() {
     printf '  device    : %s\n' "$(wifilab_human_device_name "$iface" "$(wifilab_udev_property "$iface" ID_BUS)" "$(wifilab_udev_property "$iface" ID_VENDOR_ID)" "$(wifilab_udev_property "$iface" ID_MODEL_ID)")"
     printf '  driver    : %s\n' "$(wifilab_driver_for_iface "$iface")"
     printf '  identity  : %s:%s / %s\n' \
-        "${bus:-$(wifilab_udev_property "$iface" ID_BUS)}" \
+        "$(wifilab_udev_property "$iface" ID_BUS)" \
         "$(wifilab_udev_property "$iface" ID_VENDOR_ID):$(wifilab_udev_property "$iface" ID_MODEL_ID)" \
         "$(wifilab_driver_for_iface "$iface")"
 }
@@ -136,9 +136,7 @@ wifilab_resolve_selected() {
 
 wifilab_status() {
     local iface
-    if ! iface=$(wifilab_resolve_selected); then
-        return $?
-    fi
+    iface=$(wifilab_resolve_selected) || return $?
 
     printf 'WiFiLab selected adapter status\n'
     printf '  interface      : %s\n' "$iface"
@@ -149,4 +147,74 @@ wifilab_status() {
     printf '  NetworkManager : %s\n' "$(wifilab_nm_state "$iface")"
     printf '  monitor        : %s\n' "$(wifilab_monitor_supported "$(wifilab_phy_for_iface "$iface")")"
     printf '  regdomain      : %s\n' "$(wifilab_regdomain)"
+}
+
+wifilab_status_json() {
+    local iface='' selected=false present=false
+    local bus vendor_id model_id driver path phy type mac operstate nm_state connection monitor regdomain device_name role protected=false
+
+    if [[ -r $WIFILAB_SELECTION_FILE ]]; then
+        selected=true
+    fi
+
+    bus=$(wifilab_selection_field bus)
+    vendor_id=$(wifilab_selection_field vendor_id)
+    model_id=$(wifilab_selection_field model_id)
+    driver=$(wifilab_selection_field driver)
+    path=$(wifilab_selection_field path)
+
+    if iface=$(wifilab_resolve_selected 2>/dev/null); then
+        present=true
+        phy=$(wifilab_phy_for_iface "$iface")
+        type=$(wifilab_iface_type "$iface")
+        mac=$(cat "/sys/class/net/$iface/address" 2>/dev/null || true)
+        operstate=$(cat "/sys/class/net/$iface/operstate" 2>/dev/null || true)
+        nm_state=$(wifilab_nm_state "$iface")
+        connection=$(wifilab_nm_connection "$iface")
+        driver=$(wifilab_driver_for_iface "$iface")
+        bus=$(wifilab_udev_property "$iface" ID_BUS)
+        vendor_id=$(wifilab_udev_property "$iface" ID_VENDOR_ID)
+        model_id=$(wifilab_udev_property "$iface" ID_MODEL_ID)
+        path=$(wifilab_udev_property "$iface" ID_PATH)
+        monitor=$(wifilab_monitor_supported "$phy")
+        regdomain=$(wifilab_regdomain)
+        device_name=$(wifilab_human_device_name "$iface" "$bus" "$vendor_id" "$model_id")
+        role=$(wifilab_role_for_iface "$nm_state" "$connection" "$bus")
+        if [[ $nm_state == connected && -n $connection ]]; then
+            protected=true
+        fi
+    else
+        phy=''
+        type=''
+        mac=''
+        operstate=''
+        nm_state=''
+        connection=''
+        monitor='unknown'
+        regdomain=$(wifilab_regdomain)
+        device_name=''
+        role=''
+    fi
+
+    printf '{'
+    printf '"selected":%s,' "$selected"
+    printf '"present":%s,' "$present"
+    printf '"protected":%s,' "$protected"
+    printf '"interface":"%s",' "$(wifilab_json_escape "$iface")"
+    printf '"phy":"%s",' "$(wifilab_json_escape "$phy")"
+    printf '"device_name":"%s",' "$(wifilab_json_escape "$device_name")"
+    printf '"bus":"%s",' "$(wifilab_json_escape "$bus")"
+    printf '"vendor_id":"%s",' "$(wifilab_json_escape "$vendor_id")"
+    printf '"model_id":"%s",' "$(wifilab_json_escape "$model_id")"
+    printf '"driver":"%s",' "$(wifilab_json_escape "$driver")"
+    printf '"path":"%s",' "$(wifilab_json_escape "$path")"
+    printf '"mode":"%s",' "$(wifilab_json_escape "$type")"
+    printf '"operstate":"%s",' "$(wifilab_json_escape "$operstate")"
+    printf '"nm_state":"%s",' "$(wifilab_json_escape "$nm_state")"
+    printf '"connection":"%s",' "$(wifilab_json_escape "$connection")"
+    printf '"monitor_supported":"%s",' "$(wifilab_json_escape "$monitor")"
+    printf '"regdomain":"%s",' "$(wifilab_json_escape "$regdomain")"
+    printf '"mac":"%s",' "$(wifilab_json_escape "$mac")"
+    printf '"role":"%s"' "$(wifilab_json_escape "$role")"
+    printf '}\n'
 }
