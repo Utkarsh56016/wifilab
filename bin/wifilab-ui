@@ -15,7 +15,7 @@ done
 
 SCRIPT_DIR=$(cd -P -- "$(dirname -- "$SOURCE")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
-ENTRYPOINT="$ROOT_DIR/ui/quickshell/wifilab/main.qml"
+ENTRYPOINT="$ROOT_DIR/ui/quickshell/wifilab/panel.qml"
 
 command -v qs >/dev/null 2>&1 || {
     printf 'wifilab-ui: Quickshell executable `qs` was not found in PATH\n' >&2
