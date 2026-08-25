@@ -4,92 +4,91 @@ WiFiLab is being developed as a safe Linux wireless-adapter controller for Arch 
 
 ## Phase 0 — Hardware Validation
 
-Status: **In progress**
+Status: **Complete**
 
-Goals:
-- Identify all wireless adapters dynamically.
-- Map interface ↔ PHY ↔ driver ↔ USB/PCI device.
-- Confirm monitor-mode capability on the lab adapter.
-- Confirm legal regulatory-domain handling.
-- Validate managed → monitor → managed transitions.
-- Validate passive 802.11 frame reception.
-- Confirm NetworkManager restore behavior.
-- Record rollback steps.
+Validated:
+- dynamic adapter/PHY/driver mapping
+- RTL8822BU monitor capability
+- legal `IN` regulatory domain
+- managed → monitor → managed lifecycle
+- passive 802.11 reception
+- NetworkManager restore
+- system Wi-Fi isolation
 
-Current lab adapter:
-- USB ID: `2357:0138`
-- Vendor: TP-Link
-- Chipset family: Realtek RTL8822BU
-- Kernel driver: `rtw88_8822bu`
-- Current interface observed: `wlan4`
-- Current PHY observed: `phy4`
-- Monitor mode advertised: yes
+## Phase 1 — Read-Only Discovery
 
-Important: interface names are runtime values and must never be hardcoded.
+Status: **Complete**
 
-## Phase 1 — Architecture
+Implemented:
+- sysfs wireless enumeration
+- PHY, driver, bus, VID:PID, human-readable device identity
+- NetworkManager state and connection detection
+- monitor capability and regulatory reporting
+- human-readable CLI output
+- machine-readable JSON
+- system-vs-lab role inference
+- symlink-safe launcher resolution
 
-- Define adapter model and state machine.
-- Define privilege boundary.
-- Define stable backend output for CLI and Quickshell.
-- Define error and rollback semantics.
+Important design conclusion: interface names, PHY names, and MAC addresses are runtime properties, not stable physical identity keys.
 
-## Phase 2 — Read-Only Discovery
+## Phase 2 — Safe State Controller
 
-- Enumerate wireless interfaces.
-- Read PHY capabilities.
-- Read drivers and bus identity.
-- Read NetworkManager ownership and connection state.
-- Read regulatory state.
-- Produce machine-readable output.
+Status: **Validation in progress**
 
-## Phase 3 — Safe Mode Controller
+Implemented:
+- `wifilab monitor <iface>`
+- `wifilab managed <iface>`
+- `wifilab restore <iface>`
+- `wifilab channel <iface> <channel>`
+- active-system-interface refusal
+- live-wireless-interface validation
+- monitor-capability validation
+- per-interface NetworkManager release/restore
+- post-transition validation
+- rollback helper
+- deterministic development-only rollback fault injection
 
-- Managed → monitor transition.
-- Monitor → managed restore.
-- NetworkManager coordination.
-- Connected-interface safety guard.
-- Channel selection with regulatory validation.
-- Failure rollback.
+Validated:
+- active system Wi-Fi mutation refusal
+- idle lab adapter managed → monitor
+- target-only NetworkManager release
+- primary connectivity preserved
+- monitor → managed restore
+- NetworkManager ownership restored
+- regulatory domain preserved
 
-## Phase 4 — CLI
+Remaining:
+- deterministic rollback fault-injection test
+- channel-command validation
 
-Command: `wifilab`
+## Phase 3 — CLI Hardening
 
-Planned capabilities:
-- adapter list
-- adapter info
-- mode status
-- monitor enable/disable
-- channel selection
-- diagnostics
-- restore
+Planned:
+- stable adapter selectors beyond raw runtime interface names
+- clearer error/status codes
+- structured operation output for desktop integration
+- help/completion improvements
 
-## Phase 5 — Quickshell Integration
+## Phase 4 — Quickshell Integration
 
-- Stable backend IPC/command contract.
-- Floating panel lifecycle.
-- Adapter selector.
-- Live state display.
-- Safe action controls.
-- Error/result notifications.
+- stable backend JSON/IPC contract
+- adapter selection and state refresh
+- privileged-action boundary
+- error/result reporting
 
-## Phase 6 — Quickshell Floating Panel
-
-Primary desktop UI for niri + Dank Material Shell.
+## Phase 5 — Quickshell Floating Panel
 
 Planned controls:
 - adapter selector
 - driver / PHY / bus identity
 - current mode
 - connected/system-interface warning
-- managed / monitor toggle
+- managed / monitor / restore controls
 - channel selector
 - regulatory status
-- diagnostic actions
-- safe restore
+- diagnostics
 
-## Phase 7 — Capture / Lab Integrations
+## Phase 6 — Capture / Lab Integrations
 
 Only after core state transitions are stable:
 - tcpdump / tshark integration
@@ -98,11 +97,10 @@ Only after core state transitions are stable:
 - capture-file management
 - channel hopping
 
-## Phase 8 — Packaging and Documentation
+## Phase 7 — Packaging and Documentation
 
-- install script or Arch package
+- install/uninstall path
+- Arch packaging direction
 - shell completion
-- user documentation
-- troubleshooting guide
-- architecture documentation
-- validation checklist
+- troubleshooting and validation docs
+- rollback documentation
