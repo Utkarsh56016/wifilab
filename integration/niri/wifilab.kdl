@@ -1,0 +1,23 @@
+// WiFiLab floating-window integration for niri.
+// Validated against current niri window-rule syntax.
+// Install by including this file from ~/.config/niri/config.kdl after `niri validate`.
+
+window-rule {
+    match app-id=r#"^io\.github\.utkarsh56016\.wifilab$"#
+
+    // WiFiLab is a utility panel, not a scrolling-layout application.
+    open-floating true
+    default-column-width { fixed 1040; }
+    default-window-height { fixed 720; }
+
+    // Match the DMS/Archcraft rounded utility-window treatment.
+    geometry-corner-radius 24
+    clip-to-geometry true
+
+    // The QML surface is translucent. Let niri provide the actual compositor blur.
+    background-effect {
+        blur true
+        noise 0.015
+        saturation 1.15
+    }
+}
