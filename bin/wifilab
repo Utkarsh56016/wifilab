@@ -16,15 +16,11 @@ done
 SCRIPT_DIR=$(cd -P -- "$(dirname -- "$SOURCE")" && pwd)
 ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 
-# shellcheck source=../lib/wifilab/discover.sh
 source "$ROOT_DIR/lib/wifilab/discover.sh"
-# shellcheck source=../lib/wifilab/radio.sh
 source "$ROOT_DIR/lib/wifilab/radio.sh"
-# shellcheck source=../lib/wifilab/state.sh
 source "$ROOT_DIR/lib/wifilab/state.sh"
-# shellcheck source=../lib/wifilab/select.sh
+source "$ROOT_DIR/lib/wifilab/safety.sh"
 source "$ROOT_DIR/lib/wifilab/select.sh"
-# shellcheck source=../lib/wifilab/telemetry.sh
 source "$ROOT_DIR/lib/wifilab/telemetry.sh"
 
 usage() {
@@ -86,9 +82,10 @@ State commands:
             selected adapter, or `wifilab channel wlan6 11` explicitly.
 
 Safety:
-  WiFiLab refuses state changes on the currently connected system Wi-Fi
-  interface. Selection stores physical metadata rather than wlanX/phyX names.
-  WiFiLab never globally kills or restarts NetworkManager.
+  WiFiLab refuses state changes on wireless interfaces carrying an active
+  NetworkManager connection or a system default route. Selection stores
+  physical metadata rather than wlanX/phyX names. WiFiLab never globally
+  kills or restarts NetworkManager.
 EOF
 }
 
@@ -191,10 +188,7 @@ case "${1:-adapters}" in
             3)
                 wifilab_channel "$2" "$3"
                 ;;
-            *)
-                usage >&2
-                exit 2
-                ;;
+            *) usage >&2; exit 2 ;;
         esac
         ;;
     help|-h|--help)
