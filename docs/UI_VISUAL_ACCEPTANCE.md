@@ -1,51 +1,60 @@
 # WiFiLab UI Visual Acceptance
 
-The approved design reference is `ref_design.png`.
+## Reference
 
-## Current status
+The approved design reference is `ref_design.png` in the repository root.
 
-The v3 read-only Quickshell render is **not visually accepted** yet.
+## Current accepted visual baseline
 
-Compositor integration is healthy:
+The v4 Quickshell shell is accepted as the first usable visual baseline.
 
-- app ID: `io.github.utkarsh56016.wifilab`
-- niri floating rule works
-- window geometry is 1040 x 720
-- rounded clipping works
-- Quickshell loads without QML binding/reference errors
+Validated characteristics:
 
-The remaining failure is QML layout allocation, not compositor integration.
+- centered 1040x720 floating niri window
+- rounded clipped geometry
+- DMS-aligned dark palette
+- two-tab CONTROL / TRAFFIC structure
+- deterministic fixed instrument-panel geometry
+- adapter selector with persistent physical identity
+- protected system adapter visibility
+- prominent MAN / MON state control
+- regulatory/channel controls
+- runtime interface/PHY information
+- diagnostics, activity and rollback areas
+- Traffic page with RX/TX metrics, graph area and protocol section
+- footer state indicators remain isolated from body content
 
-## Reference structure
+## Glass treatment
 
-The CONTROL page should read as a stable three-column instrument panel:
+The accepted geometry must not be changed to obtain transparency. Glass styling is handled independently through:
 
-```text
-Adapters / Mode / Runtime
-Channel  / State / Restore
-Activity / Diagnostics / Future
-```
+- mild QML surface translucency
+- niri compositor-side background blur
+- restrained compositor opacity
+- low noise and near-neutral background saturation
 
-The TRAFFIC page is allowed to differ from the control mockup, but must preserve the same shell, summary strip, spacing, typography, and card proportions.
+Readability takes priority over transparency.
 
-## v3 failure observed on workstation
+## Hard rules
 
-The TRAFFIC tab showed the adapter/safety summary row stretched to several hundred pixels, while the RX/TX/MODE/PROTOCOL metric row and lower traffic content were pushed into the footer region.
+1. Do not reintroduce stretchable QtQuick Layouts into the fixed 1040x720 visual shell.
+2. Header, summary strip, instrument area and footer have deterministic geometry.
+3. CONTROL and TRAFFIC content must never overlap the footer.
+4. System/protected adapter controls remain disabled in the UI and backend.
+5. Quickshell remains unprivileged.
+6. Privileged mutations stay behind the root-owned polkit helper.
+7. Visual changes must not alter the validated backend safety contract.
 
-Root cause is deterministic Qt Quick Layout behavior: rows/cards that are meant to be fixed-height use `Layout.preferredHeight` without matching `Layout.minimumHeight` and `Layout.maximumHeight`. With remaining vertical space, the layout is free to stretch them.
+## Next acceptance stage
 
-Affected constraints include at minimum:
+Visual geometry is frozen while functional validation proceeds:
 
-- `panel.qml` adapter/safety summary row: 74 px
-- `panel.qml` header: 44 px
-- `panel.qml` footer: 20 px
-- `TrafficDashboard.qml` metric row: 78 px
-- `TrafficDashboard.qml` protocol card: 132 px
-- `ControlDashboard.qml` row 1: 170 px
-- `ControlDashboard.qml` row 2: 160 px
+- install and probe polkit/helper path without mutation
+- validate MAN -> MON transition
+- validate channel control
+- validate emergency restore / rollback
+- verify system Wi-Fi remains connected throughout
+- verify unplug/replug recovery with UI open
+- exercise Traffic graph with real counter changes
 
-These fixed rows should use matching min/preferred/max heights. Only the intentionally flexible content area should use `Layout.fillHeight`.
-
-## Acceptance rule
-
-Do not enable the privileged UI helper until both CONTROL and TRAFFIC pages satisfy visual acceptance against `ref_design.png` and render without clipping/overlap.
+Only after those gates pass should further cosmetic polish be considered.
