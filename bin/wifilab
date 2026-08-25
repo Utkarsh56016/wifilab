@@ -22,6 +22,8 @@ source "$ROOT_DIR/lib/wifilab/discover.sh"
 source "$ROOT_DIR/lib/wifilab/state.sh"
 # shellcheck source=../lib/wifilab/select.sh
 source "$ROOT_DIR/lib/wifilab/select.sh"
+# shellcheck source=../lib/wifilab/telemetry.sh
+source "$ROOT_DIR/lib/wifilab/telemetry.sh"
 
 usage() {
     cat <<'EOF'
@@ -34,7 +36,8 @@ Usage:
   wifilab --json
   wifilab doctor
   wifilab select [iface]
-  wifilab status
+  wifilab status [--json]
+  wifilab telemetry --json
   wifilab monitor [iface]
   wifilab managed [iface]
   wifilab restore [iface]
@@ -52,7 +55,13 @@ Selection:
   select    Persist a physical lab-adapter identity. With no interface,
             auto-select the sole idle USB wireless candidate.
   status    Resolve the selected physical adapter to its current runtime
-            interface and show its live state.
+            interface and show live state. Add --json for UI/agent use.
+
+Telemetry:
+  telemetry --json
+            Emit read-only selected-interface RX/TX byte/packet counters.
+            The UI derives rates from consecutive samples; no capture or root
+            privilege is required for these counters.
 
 State commands:
   monitor   Switch the selected adapter to monitor mode. An explicit iface
@@ -115,8 +124,18 @@ case "${1:-adapters}" in
         wifilab_select "${2-}"
         ;;
     status)
-        [[ $# -eq 1 ]] || { usage >&2; exit 2; }
-        wifilab_status
+        case $# in
+            1) wifilab_status ;;
+            2)
+                [[ $2 == --json || $2 == json ]] || { usage >&2; exit 2; }
+                wifilab_status_json
+                ;;
+            *) usage >&2; exit 2 ;;
+        esac
+        ;;
+    telemetry)
+        [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
+        wifilab_telemetry_json
         ;;
     monitor)
         [[ $# -le 2 ]] || { usage >&2; exit 2; }
