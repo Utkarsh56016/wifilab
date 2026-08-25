@@ -30,7 +30,7 @@ command -v qs >/dev/null 2>&1 || {
 # Foreground mode is intentionally available for debugging QML/log output.
 # No privileged helper is installed by this launcher; read-only rendering remains safe.
 if [[ ${WIFILAB_UI_FOREGROUND:-0} == 1 ]]; then
-    exec qs --no-duplicate --path "$ENTRYPOINT"
+    exec qs --path "$ENTRYPOINT"
 fi
 
-exec qs --no-duplicate --daemonize --path "$ENTRYPOINT"
+exec qs --daemonize --path "$ENTRYPOINT"
