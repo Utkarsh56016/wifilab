@@ -18,6 +18,8 @@ ROOT_DIR=$(cd -- "$SCRIPT_DIR/.." && pwd)
 
 # shellcheck source=../lib/wifilab/discover.sh
 source "$ROOT_DIR/lib/wifilab/discover.sh"
+# shellcheck source=../lib/wifilab/radio.sh
+source "$ROOT_DIR/lib/wifilab/radio.sh"
 # shellcheck source=../lib/wifilab/state.sh
 source "$ROOT_DIR/lib/wifilab/state.sh"
 # shellcheck source=../lib/wifilab/select.sh
@@ -37,7 +39,9 @@ Usage:
   wifilab doctor
   wifilab select [iface]
   wifilab status [--json]
+  wifilab channels --json
   wifilab telemetry --json
+  wifilab protocols --json
   wifilab monitor [iface]
   wifilab managed [iface]
   wifilab restore [iface]
@@ -57,11 +61,16 @@ Selection:
   status    Resolve the selected physical adapter to its current runtime
             interface and show live state. Add --json for UI/agent use.
 
-Telemetry:
+Read-only UI/agent data:
+  channels --json
+            Emit kernel-advertised channels and regulatory flags for the
+            selected adapter PHY.
   telemetry --json
-            Emit read-only selected-interface RX/TX byte/packet counters.
-            The UI derives rates from consecutive samples; no capture or root
-            privilege is required for these counters.
+            Emit selected-interface RX/TX byte/packet counters. The UI derives
+            rates from consecutive samples without packet capture or root.
+  protocols --json
+            Take a short passive tshark sample when existing capture permissions
+            allow it. This command never escalates privileges.
 
 State commands:
   monitor   Switch the selected adapter to monitor mode. An explicit iface
@@ -91,6 +100,12 @@ doctor() {
             missing=1
         fi
     done
+
+    if command -v tshark >/dev/null 2>&1; then
+        printf '  [optional] tshark -> %s\n' "$(command -v tshark)"
+    else
+        printf '  [optional] tshark -> not installed (protocol sampling disabled)\n'
+    fi
 
     printf '\nWireless interfaces discovered: '
     mapfile -t ifaces < <(wifilab_wireless_ifaces)
@@ -133,9 +148,17 @@ case "${1:-adapters}" in
             *) usage >&2; exit 2 ;;
         esac
         ;;
+    channels)
+        [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
+        wifilab_channels_json
+        ;;
     telemetry)
         [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
         wifilab_telemetry_json
+        ;;
+    protocols)
+        [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
+        wifilab_protocols_json
         ;;
     monitor)
         [[ $# -le 2 ]] || { usage >&2; exit 2; }
