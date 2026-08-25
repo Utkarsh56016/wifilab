@@ -2,7 +2,6 @@
 //@ pragma Env QS_NO_RELOAD_POPUP=1
 
 import QtQuick
-import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 
@@ -382,18 +381,21 @@ ShellRoot {
             Behavior on color { ColorAnimation { duration: 220 } }
             Behavior on border.color { ColorAnimation { duration: 220 } }
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 14
-                spacing: 9
+            Item {
+                id: frame
+                x: 14; y: 14
+                width: 1012; height: 692
 
-                // Header
+                // ------------------------------------------------------
+                // Header: 44 px
+                // ------------------------------------------------------
                 Item {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 44
+                    id: header
+                    x: 0; y: 0
+                    width: parent.width; height: 44
 
                     Row {
-                        anchors.left: parent.left
+                        x: 0
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 8
                         Text { text: "wifi_tethering"; color: app.success; font.family: "Material Symbols Rounded"; font.pixelSize: 25 }
@@ -402,42 +404,36 @@ ShellRoot {
                     }
 
                     MouseArea {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        width: 220
-                        height: parent.height
+                        x: 0; y: 0; width: 220; height: parent.height
                         cursorShape: Qt.SizeAllCursor
                         onPressed: win.startSystemMove()
                     }
 
                     Rectangle {
-                        anchors.centerIn: parent
+                        x: (parent.width - width) / 2
+                        y: 4
                         width: 250
                         height: 36
                         radius: 13
-                        color: Qt.rgba(0, 0, 0, 0.23)
+                        color: Qt.rgba(0,0,0,0.24)
                         border.width: 1
                         border.color: app.outline
 
-                        Row {
-                            anchors.fill: parent
-                            anchors.margins: 4
-                            spacing: 4
-
-                            Repeater {
-                                model: ["CONTROL", "TRAFFIC"]
-                                delegate: Rectangle {
-                                    required property string modelData
-                                    required property int index
-                                    width: 119
-                                    height: 28
-                                    radius: 9
-                                    color: app.activeTab === index ? Qt.rgba(app.accent.r, app.accent.g, app.accent.b, 0.13) : "transparent"
-                                    border.width: app.activeTab === index ? 1 : 0
-                                    border.color: app.accent
-                                    Text { anchors.centerIn: parent; text: modelData; color: app.activeTab === index ? app.textPrimary : app.textMuted; font.pixelSize: 9; font.bold: app.activeTab === index }
-                                    MouseArea { anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: app.activeTab = index }
-                                }
+                        Repeater {
+                            model: ["CONTROL", "TRAFFIC"]
+                            delegate: Rectangle {
+                                required property string modelData
+                                required property int index
+                                x: 4 + index * 123
+                                y: 4
+                                width: 119
+                                height: 28
+                                radius: 9
+                                color: app.activeTab === index ? Qt.rgba(app.accent.r, app.accent.g, app.accent.b, 0.14) : "transparent"
+                                border.width: app.activeTab === index ? 1 : 0
+                                border.color: app.accent
+                                Text { anchors.centerIn: parent; text: modelData; color: app.activeTab === index ? app.textPrimary : app.textMuted; font.pixelSize: 9; font.bold: app.activeTab === index }
+                                MouseArea { anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: app.activeTab = index }
                             }
                         }
                     }
@@ -452,17 +448,20 @@ ShellRoot {
                     }
                 }
 
-                // Adapter/safety summary row
-                RowLayout {
+                // ------------------------------------------------------
+                // Summary strip: y=53, h=74
+                // 470 + 9 + 190 + 9 + 225 + 9 + 100 = 1012
+                // ------------------------------------------------------
+                Item {
+                    id: summary
+                    x: 0; y: 53
+                    width: parent.width; height: 74
                     z: 80
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 74
-                    spacing: 9
 
                     AdapterSelector {
                         id: selector
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
+                        x: 0; y: 0
+                        width: 470; height: 74
                         adapters: app.adapters
                         currentIndex: app.inspectedIndex
                         surfaceColor: app.surface
@@ -477,8 +476,8 @@ ShellRoot {
                     }
 
                     GlassCard {
-                        Layout.preferredWidth: 190
-                        Layout.fillHeight: true
+                        x: 479; y: 0
+                        width: 190; height: 74
                         fillColor: app.surfaceHigh
                         outlineColor: app.outline
                         Row {
@@ -494,8 +493,8 @@ ShellRoot {
                     }
 
                     GlassCard {
-                        Layout.preferredWidth: 225
-                        Layout.fillHeight: true
+                        x: 678; y: 0
+                        width: 225; height: 74
                         fillColor: app.surfaceHigh
                         outlineColor: app.outline
                         Row {
@@ -511,50 +510,82 @@ ShellRoot {
                     }
 
                     GlassCard {
-                        Layout.preferredWidth: 82
-                        Layout.fillHeight: true
+                        x: 912; y: 0
+                        width: 100; height: 74
                         fillColor: app.surfaceHigh
                         outlineColor: app.outline
                         Text { anchors.centerIn: parent; text: "REG: " + (app.status.regdomain || "—"); color: app.status.regdomain ? app.success : app.textMuted; font.pixelSize: 9; font.bold: true }
                     }
                 }
 
-                GlassCard {
-                    visible: !app.inspectingProtected && app.status.selected && !app.status.present
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    fillColor: app.surfaceHigh
-                    outlineColor: app.warning
-                    Column {
-                        anchors.centerIn: parent
-                        spacing: 8
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "usb_off"; color: app.warning; font.family: "Material Symbols Rounded"; font.pixelSize: 42 }
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Selected adapter not present"; color: app.textPrimary; font.pixelSize: 17; font.bold: true }
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Saved physical identity is retained. WiFiLab will recover automatically after replug."; color: app.textMuted; font.pixelSize: 9 }
+                // ------------------------------------------------------
+                // Main instrument area: y=136, h=527
+                // ------------------------------------------------------
+                Item {
+                    id: contentArea
+                    x: 0; y: 136
+                    width: parent.width; height: 527
+                    clip: true
+
+                    GlassCard {
+                        visible: !app.inspectingProtected && app.status.selected && !app.status.present
+                        anchors.fill: parent
+                        fillColor: app.surfaceHigh
+                        outlineColor: app.warning
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "usb_off"; color: app.warning; font.family: "Material Symbols Rounded"; font.pixelSize: 42 }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Selected adapter not present"; color: app.textPrimary; font.pixelSize: 17; font.bold: true }
+                            Text { anchors.horizontalCenter: parent.horizontalCenter; text: "Saved physical identity is retained. WiFiLab will recover automatically after replug."; color: app.textMuted; font.pixelSize: 9 }
+                        }
+                    }
+
+                    ControlDashboard {
+                        anchors.fill: parent
+                        visible: (app.inspectingProtected || !app.status.selected || app.status.present) && app.activeTab === 0
+                        backend: app
+                    }
+
+                    TrafficDashboard {
+                        id: trafficView
+                        anchors.fill: parent
+                        visible: (app.inspectingProtected || !app.status.selected || app.status.present) && app.activeTab === 1
+                        backend: app
                     }
                 }
 
-                StackLayout {
-                    visible: app.inspectingProtected || !app.status.selected || app.status.present
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    currentIndex: app.activeTab
+                // ------------------------------------------------------
+                // Footer: y=672, h=20
+                // ------------------------------------------------------
+                Item {
+                    id: footer
+                    x: 0; y: 672
+                    width: parent.width; height: 20
 
-                    ControlDashboard { backend: app }
-                    TrafficDashboard { id: trafficView; backend: app }
-                }
+                    Row {
+                        x: 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 7
+                        StatusDot { dotColor: app.status.present ? app.success : app.warning }
+                        Text { text: app.status.present ? "Backend ready" : "Waiting for selected adapter"; color: app.textMuted; font.pixelSize: 8; anchors.verticalCenter: parent.verticalCenter }
+                    }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 20
-                    spacing: 7
-                    StatusDot { dotColor: app.status.present ? app.success : app.warning }
-                    Text { text: app.status.present ? "Backend ready" : "Waiting for selected adapter"; color: app.textMuted; font.pixelSize: 8 }
-                    Item { Layout.fillWidth: true }
-                    StatusDot { dotColor: app.helperReady ? app.success : app.warning }
-                    Text { text: app.helperReady ? "Guarded mutations enabled" : "Read-only mode"; color: app.textMuted; font.pixelSize: 8 }
-                    Item { Layout.fillWidth: true }
-                    Text { text: "Agent-ready JSON contract • UI unprivileged"; color: app.textMuted; font.pixelSize: 8 }
+                    Row {
+                        x: (parent.width - width) / 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 7
+                        StatusDot { dotColor: app.helperReady ? app.success : app.warning }
+                        Text { text: app.helperReady ? "Guarded mutations enabled" : "Read-only mode"; color: app.textMuted; font.pixelSize: 8; anchors.verticalCenter: parent.verticalCenter }
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Agent-ready JSON contract • UI unprivileged"
+                        color: app.textMuted
+                        font.pixelSize: 8
+                    }
                 }
             }
 
@@ -566,7 +597,7 @@ ShellRoot {
 
                 Rectangle {
                     anchors.fill: parent
-                    color: Qt.rgba(0, 0, 0, 0.72)
+                    color: Qt.rgba(0,0,0,0.72)
                     MouseArea { anchors.fill: parent; onClicked: app.riskConfirmVisible = false }
                 }
 
