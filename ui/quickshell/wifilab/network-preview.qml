@@ -108,7 +108,7 @@ ShellRoot {
                     font.bold: true
                 }
 
-                NetworkDashboard {
+                NetworkDashboardGuarded {
                     x: 0
                     y: 42
                     width: parent.width
