@@ -24,6 +24,7 @@ source "$ROOT_DIR/lib/wifilab/json.sh"
 source "$ROOT_DIR/lib/wifilab/select.sh"
 source "$ROOT_DIR/lib/wifilab/telemetry.sh"
 source "$ROOT_DIR/lib/wifilab/capture.sh"
+source "$ROOT_DIR/lib/wifilab/capture_inventory.sh"
 
 usage() {
     cat <<'EOF'
@@ -43,6 +44,7 @@ Usage:
   wifilab protocols --json
   wifilab capture status --json
   wifilab capture run [duration_seconds] [max_kib]
+  wifilab capture latest --json
   wifilab captures --json
   wifilab monitor [iface]
   wifilab managed [iface]
@@ -78,8 +80,12 @@ Read-only UI/agent data:
   capture status --json
             Report whether bounded passive capture is available, permitted,
             safe for the selected adapter, and ready in the current radio mode.
+  capture latest --json
+            Emit the newest WiFiLab-created capture with manifest-backed
+            historical radio metadata when available.
   captures --json
-            List WiFiLab-created capture files and sizes.
+            List WiFiLab-created captures. Existing name/bytes/file fields are
+            retained while richer capture metadata is added.
 
 Capture:
   capture run [duration_seconds] [max_kib]
@@ -200,6 +206,10 @@ case "${1:-adapters}" in
                     4) wifilab_capture_run_json "$3" "$4" ;;
                     *) usage >&2; exit 2 ;;
                 esac
+                ;;
+            latest)
+                [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_capture_latest_json
                 ;;
             *) usage >&2; exit 2 ;;
         esac
