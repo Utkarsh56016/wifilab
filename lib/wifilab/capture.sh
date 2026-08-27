@@ -21,6 +21,65 @@ wifilab_capture_stack_state() {
     fi
 }
 
+wifilab_capture_manifest_path() {
+    local capture_file=$1
+    printf '%s.json\n' "${capture_file%.pcapng}"
+}
+
+wifilab_capture_write_manifest() {
+    local capture_file=$1
+    local capture_id=$2
+    local created_at_utc=$3
+    local iface=$4
+    local phy=$5
+    local driver=$6
+    local channel=$7
+    local frequency_mhz=$8
+    local regdomain=$9
+    local duration_limit=${10}
+    local size_limit_kib=${11}
+    local bytes=${12}
+    local sha256=${13}
+    local manifest tmp
+
+    manifest=$(wifilab_capture_manifest_path "$capture_file")
+
+    if ! tmp=$(mktemp "$WIFILAB_CAPTURE_DIR/.manifest.XXXXXX"); then
+        return 1
+    fi
+
+    if ! {
+        printf '{'
+        printf '"schema_version":1,'
+        printf '"capture_id":"%s",' "$(wifilab_json_escape "$capture_id")"
+        printf '"created_at_utc":"%s",' "$(wifilab_json_escape "$created_at_utc")"
+        printf '"file":"%s",' "$(wifilab_json_escape "$capture_file")"
+        printf '"interface":"%s",' "$(wifilab_json_escape "$iface")"
+        printf '"phy":"%s",' "$(wifilab_json_escape "$phy")"
+        printf '"driver":"%s",' "$(wifilab_json_escape "$driver")"
+        printf '"channel":%s,' "${channel:-0}"
+        printf '"frequency_mhz":%s,' "${frequency_mhz:-0}"
+        printf '"regdomain":"%s",' "$(wifilab_json_escape "$regdomain")"
+        printf '"duration_limit_seconds":%s,' "$duration_limit"
+        printf '"size_limit_kib":%s,' "$size_limit_kib"
+        printf '"bytes":%s,' "${bytes:-0}"
+        printf '"sha256":"%s"' "$(wifilab_json_escape "$sha256")"
+        printf '}\n'
+    } >"$tmp"; then
+        rm -f -- "$tmp"
+        return 1
+    fi
+
+    chmod 600 "$tmp" 2>/dev/null || true
+
+    if ! mv -f -- "$tmp" "$manifest"; then
+        rm -f -- "$tmp"
+        return 1
+    fi
+
+    printf '%s\n' "$manifest"
+}
+
 wifilab_capture_status_json() {
     local iface='' present=false protected=false mode='' ready=false
 
@@ -55,6 +114,8 @@ wifilab_capture_run_json() {
     local duration=${1:-10}
     local max_kib=${2:-10240}
     local iface mode dumpcap_path stamp outfile errfile bytes=0 rc=0 err_msg=''
+    local capture_id created_at_utc phy driver channel frequency_mhz regdomain
+    local sha256='' manifest='' metadata_state='missing' metadata_warning=''
 
     [[ $duration =~ ^[0-9]+$ ]] && (( duration >= 1 && duration <= 300 )) || {
         printf '{"ok":false,"error":"invalid_duration","message":"duration must be an integer from 1 to 300 seconds"}\n'
@@ -101,7 +162,19 @@ wifilab_capture_run_json() {
     chmod 700 "$WIFILAB_CAPTURE_DIR" 2>/dev/null || true
 
     stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    created_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)
     outfile="$WIFILAB_CAPTURE_DIR/capture-${stamp}-$$.pcapng"
+    capture_id=${outfile##*/}
+
+    phy=$(wifilab_phy_for_iface "$iface")
+    driver=$(wifilab_driver_for_iface "$iface")
+    channel=$(wifilab_iface_channel "$iface")
+    frequency_mhz=$(wifilab_iface_frequency_mhz "$iface")
+    regdomain=$(wifilab_regdomain)
+
+    channel=${channel:-0}
+    frequency_mhz=${frequency_mhz:-0}
+
     if ! errfile=$(mktemp "${TMPDIR:-/tmp}/wifilab-dumpcap.XXXXXX"); then
         printf '{"ok":false,"error":"temporary_file_failed","message":"could not create dumpcap error buffer"}\n'
         return 1
@@ -126,13 +199,42 @@ wifilab_capture_run_json() {
 
     rm -f "$errfile"
     bytes=$(stat -c '%s' "$outfile" 2>/dev/null || printf '0')
+
+    if sha256=$(sha256sum -- "$outfile" 2>/dev/null | awk '{print $1}') && \
+       [[ $sha256 =~ ^[0-9a-fA-F]{64}$ ]]; then
+        if manifest=$(wifilab_capture_write_manifest \
+            "$outfile" \
+            "$capture_id" \
+            "$created_at_utc" \
+            "$iface" \
+            "$phy" \
+            "$driver" \
+            "$channel" \
+            "$frequency_mhz" \
+            "$regdomain" \
+            "$duration" \
+            "$max_kib" \
+            "$bytes" \
+            "$sha256"); then
+            metadata_state='complete'
+        else
+            metadata_warning='capture saved but manifest creation failed'
+        fi
+    else
+        sha256=''
+        metadata_warning='capture saved but SHA-256 calculation failed'
+    fi
+
     printf '{'
     printf '"ok":true,'
     printf '"interface":"%s",' "$(wifilab_json_escape "$iface")"
     printf '"duration_seconds":%s,' "$duration"
     printf '"max_kib":%s,' "$max_kib"
     printf '"bytes":%s,' "${bytes:-0}"
-    printf '"file":"%s"' "$(wifilab_json_escape "$outfile")"
+    printf '"file":"%s",' "$(wifilab_json_escape "$outfile")"
+    printf '"metadata_state":"%s",' "$(wifilab_json_escape "$metadata_state")"
+    printf '"manifest":"%s",' "$(wifilab_json_escape "$manifest")"
+    printf '"metadata_warning":"%s"' "$(wifilab_json_escape "$metadata_warning")"
     printf '}\n'
 }
 
