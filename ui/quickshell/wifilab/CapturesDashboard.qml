@@ -594,10 +594,11 @@ Item {
 
                 Text {
                     visible: root.protocols.length === 0
+                    height: 24
                     text: root.analyzingProtocols ? "Reading saved PCAP…" : "No offline protocol labels"
                     color: root.analyzingProtocols ? backend.info : backend.textMuted
                     font.pixelSize: 8
-                    anchors.verticalCenter: parent.verticalCenter
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
 
