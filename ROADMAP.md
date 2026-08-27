@@ -1,6 +1,6 @@
 # WiFiLab Roadmap
 
-WiFiLab is developed as a workstation-first wireless-lab, adapter-management, passive-capture, and authorized pentesting-support console for the validated Archcraft system.
+WiFiLab is developed as a workstation-first wireless-lab, adapter-management, passive-capture, network-management, and authorized pentesting-support console for the validated Archcraft workstation.
 
 Cross-distribution portability and broad packaging remain deferred until the workstation feature set is mature.
 
@@ -30,6 +30,7 @@ See:
 - `docs/BUILD_AND_STABILIZATION_METHOD.md`
 - `docs/WORKSTATION_EXPANSION_PLAN.md`
 - `docs/ROLLBACK_CHECKPOINTS.md`
+- `docs/PHASE8_NETWORK_PLAN.md`
 
 ---
 
@@ -44,8 +45,8 @@ See:
 | 4 | Quickshell integration | Complete |
 | 5 | UI reliability + telemetry | Complete |
 | 6 | Non-root bounded passive capture baseline | Stabilized / checkpointed |
-| 7 | CAPTURES workspace | **Accepted / checkpointed** |
-| 8 | NETWORK device manager + interface roles / LAB path | **Next** |
+| 7 | CAPTURES workspace | Accepted / checkpointed |
+| 8 | NETWORK manager + Wi-Fi radar + LAB path | **Active** |
 | 9 | SURVEY passive wireless environment | Planned |
 | 10 | LAB controlled pentesting workspace | Planned |
 | 11 | Post-expansion hardening / packaging / portability | Deferred |
@@ -60,45 +61,15 @@ SYSTEM/DOCTOR remains a utility surface rather than a permanent primary tab.
 
 ---
 
-## Phase 0 — Hardware Validation
+## Phases 0–5 — Foundation
 
 Status: **Complete**
 
-Validated dynamic adapter/PHY/driver mapping, RTL8822BU monitor capability, legal `IN` regulatory state, managed/monitor lifecycle, passive 802.11 reception, NetworkManager restore, and primary-system Wi-Fi isolation.
-
-## Phase 1 — Read-Only Discovery
-
-Status: **Complete**
-
-Validated sysfs wireless discovery, role inference, human and JSON output, driver/bus/VID:PID identity, monitor capability, NetworkManager state, and symlink-safe launcher behavior.
+The accepted foundation includes hardware/driver validation, read-only discovery, protected radio state control, persistent physical LAB-adapter selection, Quickshell integration, telemetry, hotplug recovery, default-route protection, regulatory-aware channel control, scoped NetworkManager coordination, and guarded privileged mutations through the existing helper/polkit boundary.
 
 Design conclusion:
 
-> Runtime `wlanX`, `phyX`, and MAC values are not persistent physical identity.
-
-## Phase 2 — Safe State Controller
-
-Status: **Complete**
-
-Validated monitor/managed/restore/channel operations, active/default-route refusal, per-interface NetworkManager coordination, post-transition validation, rollback, and regulatory enforcement through the kernel.
-
-## Phase 3 — Persistent Selection and CLI Hardening
-
-Status: **Complete**
-
-Validated persistent physical selection based on bus/device/driver/path metadata, runtime re-resolution after USB re-enumeration, stale-name rejection, and structured JSON error paths.
-
-## Phase 4 — Quickshell Integration
-
-Status: **Complete**
-
-Validated Quickshell under Wayland/niri, DMS-aligned UI, adapter selection/protection state, polkit-backed guarded mutations, authorization cancellation, and state persistence.
-
-## Phase 5 — UI Reliability and Telemetry
-
-Status: **Complete**
-
-Validated sysfs RX/TX telemetry, hotplug recovery, regulatory-aware channel UI, stale netdev recovery, protected `wlan0`, and malformed privileged-request refusal.
+> Runtime `wlanX`, `phyX`, and MAC values are observations, not persistent physical identity.
 
 ## Phase 6 — Non-Root Bounded Passive Capture
 
@@ -113,91 +84,175 @@ ac1af9f4c970d02d906a5625619a75f72a1faeec
 checkpoint/phase6-capture-ui-validated-2026-08-26
 ```
 
----
-
-# Expansion Phases
-
 ## Phase 7 — CAPTURES Workspace
 
 Status: **Accepted / checkpointed**
 
-Goal achieved:
-
-> Convert saved PCAPNG files into a deterministic analysis workspace and eliminate protocol visualization dependence on repeated live capture.
-
 Implemented and validated:
 
-- `CONTROL | TRAFFIC | CAPTURES` navigation within the frozen `1040 × 720` shell
-- per-capture JSON manifest sidecars
+- `CONTROL | TRAFFIC | CAPTURES` in the fixed `1040 × 720` shell
+- per-capture JSON manifests
 - capture-time interface/PHY/driver/channel/frequency/regdomain metadata
-- SHA-256 capture integrity metadata
-- richer backward-compatible capture inventory
-- `wifilab capture latest --json`
-- legacy Phase 6 capture compatibility without migration/rewrite
-- strict capture-ID grammar and directory confinement
-- traversal, missing-file, invalid-ID, and symlink refusal
-- `wifilab capture protocols <id|latest> --json`
-- compatibility `wifilab protocols --json` now reading the latest saved capture
-- complete removal of live `tshark -i` protocol sampling
-- offline analysis through `tshark -r`
-- on-demand `capinfos` inspection for type, encapsulation, packet count, bytes, duration, and timestamps
-- manifest SHA verification with `verified`, `mismatch`, and `untracked` states
-- GUI viewer capability detection
-- validated `capture reveal` through the normal desktop opener
-- safe `viewer_unavailable` behavior when GUI Wireshark is absent
-- CAPTURES library, inspector, integrity state, offline protocol labels, Reveal action, and disabled viewer action when unavailable
-- no persistent `tshark`, `dumpcap`, or `capinfos` process churn
-- CONTROL and TRAFFIC visual/functional regression pass
-- primary default route remained on `wlan0`
+- SHA-256 metadata and integrity verification
+- richer backward-compatible capture inventory and latest-capture API
+- legacy Phase 6 capture support without rewrite
+- strict capture-ID/path confinement and refusal tests
+- offline `tshark -r` protocol analysis
+- removal of repeated live `tshark -i` protocol sampling
+- on-demand `capinfos` inspection
+- safe viewer/reveal actions
+- viewer-unavailable state
+- CAPTURES library/inspector UI
+- no persistent capture-analysis process churn
+- CONTROL/TRAFFIC regression pass
+- PRIMARY default route preserved
 
-Final acceptance evidence on 2026-08-27:
-
-```text
-LAB interface         wlan4 / phy4
-LAB driver            rtw88_8822bu
-LAB mode              monitor
-NetworkManager        unmanaged
-regdomain             IN
-PRIMARY default route wlan0
-capture ready         true
-saved captures        6
-latest capture        18 packets / 8024 bytes / 9.932723659 s
-encapsulation         ieee-802-11-radiotap
-integrity             verified
-protocol source       saved_capture
-live tshark -i        none
-leftover analysis     none
-```
-
-Functional checkpoint:
+Checkpoint:
 
 ```text
 17c79c134c1b66f56cc9821191e7c1fdbb533709
 checkpoint/phase7-captures-validated-2026-08-27
 ```
 
-Accepted non-goals remain:
+Deferred packaging item:
 
-- capture deletion
-- rename/tagging
-- long-running background capture daemon
-- attack workflows
-
-Known deferred integration item:
-
-- install a matching `io.github.utkarsh56016.wifilab.desktop` entry so the QML AppId can register cleanly with XDG Desktop Portal; current warning is non-blocking and has no capture/network impact.
+- install a matching `io.github.utkarsh56016.wifilab.desktop` entry so the QML AppId registers cleanly with XDG Desktop Portal.
 
 ---
 
-## Phase 8 — NETWORK Device Manager and LAB Path
+# Phase 8 — NETWORK Manager, Wi-Fi Radar, and LAB Path
 
-Status: **Next**
+Status: **Active**
 
 Goal:
 
-> Make the full workstation network topology visible while explicitly distinguishing the protected production path from lab interfaces.
+> Turn NETWORK into a proper workstation network manager: understand the complete topology first, then safely scan and connect Wi-Fi through NetworkManager while preserving the protected PRIMARY route and existing LAB-adapter safety model.
 
-Interface-role model:
+Phase 8 is no longer only a topology viewer. Its accepted target includes adapter-aware Wi-Fi discovery and controlled connection management.
+
+## Critical scan separation
+
+NETWORK and SURVEY have different purposes:
+
+```text
+NETWORK Wi-Fi scan
+  -> NetworkManager-managed scan
+  -> connectable SSIDs
+  -> saved/connected profile state
+  -> connection management
+
+SURVEY passive scan
+  -> monitor-mode observations / saved captures
+  -> passive BSSID/SSID/frame/security/signal analysis
+  -> no connection semantics
+```
+
+The NETWORK radar must use NetworkManager-compatible scan data. Passive monitor-mode survey analytics stay in Phase 9.
+
+## Target NETWORK workspace
+
+```text
+NETWORK
+├── ADAPTERS
+│   ├── PRIMARY
+│   ├── LAB
+│   ├── AUXILIARY
+│   ├── VIRTUAL
+│   └── TUNNEL
+│
+├── WIFI RADAR
+│   ├── adapter selector
+│   ├── SSID / BSSID
+│   ├── RSSI / signal quality
+│   ├── band / channel / frequency
+│   ├── security
+│   ├── saved profile state
+│   └── connected state
+│
+├── CONNECTION
+│   ├── Connect saved profile
+│   ├── Connect new network
+│   ├── Disconnect / reconnect
+│   ├── Autoconnect state
+│   └── Forget profile
+│
+└── NETWORK CONTEXT
+    ├── IPv4 / IPv6
+    ├── subnet/prefix
+    ├── gateway / DNS
+    ├── routes / metrics
+    ├── default-route owner
+    ├── protected state
+    └── LAB PATH
+```
+
+## Wi-Fi radar model
+
+The radar is a deterministic visualization rather than fake physical ranging:
+
+```text
+radial distance = RSSI / signal strength
+angle           = channel/frequency grouping
+visual grouping = band (2.4 / 5 / 6 GHz when supported)
+```
+
+Each item should expose SSID, BSSID, signal, channel, frequency, band, security, saved state, connected state, and selected adapter.
+
+## Adapter-aware connection behavior
+
+A monitor-mode/unmanaged LAB adapter is not connectable until restored through the existing validated state controller.
+
+NETWORK must show an explicit blocked state such as:
+
+```text
+LAB adapter
+mode: monitor
+NetworkManager: unmanaged
+
+Connection unavailable.
+Restore to managed mode first.
+```
+
+NETWORK must reuse CONTROL/state-controller logic; it must not invent a second raw `iw` mutation path.
+
+## Route and credential safety
+
+Wi-Fi connection changes can alter addresses, gateway, DNS, route metrics, and default-route ownership. Therefore connection mutations are not introduced until the read-only route model is validated.
+
+Initial rule:
+
+> Measure PRIMARY/default-route state before and after every connection mutation.
+
+Wi-Fi secrets must never be emitted in WiFiLab JSON/logs or intentionally placed in process arguments. Saved-profile connection support is implemented before new-network password entry.
+
+## Phase 8 implementation order
+
+```text
+8A  read-only interface inventory
+8B  addressing + route/default-route model
+8C  interface role model
+8D  LAB PATH derivation
+8E  virtual / bridge / tunnel relationships
+8F  Wi-Fi discovery backend
+8G  saved-profile connection manager
+8H  secure new-network authentication
+8I  NETWORK QML tab + Wi-Fi radar
+8J  regression + checkpoint
+```
+
+### 8A — Read-only interface inventory
+
+Inventory all network interfaces with name, kind/type, wireless PHY/driver where applicable, MAN/MON state, operstate, NetworkManager state, MAC, MTU, RX/TX counters, and bridge/master membership.
+
+No mutations.
+
+### 8B — Addressing + route/default-route model
+
+Add IPv4/IPv6, prefixes, subnet context, gateway, DNS, routes, metrics, default-route ownership, and protected state.
+
+### 8C — Interface role model
+
+Roles:
 
 ```text
 PRIMARY
@@ -207,49 +262,60 @@ VIRTUAL
 TUNNEL
 ```
 
-Initial backend work should remain read-only first.
+The selected physical LAB identity remains authoritative across runtime `wlanX` changes.
 
-Planned instruments:
+### 8D — LAB PATH derivation
 
-- physical and virtual interface inventory
-- interface kind/type
-- link state
-- NetworkManager state
-- wireless MAN/MON state where applicable
-- driver/PHY where applicable
-- MAC and MTU
-- IPv4/IPv6 addresses and prefixes
-- gateway and DNS context
-- routes and metrics
-- default-route ownership
-- protected state
-- bridge/master membership
-- tunnel/VPN context
-- Docker/libvirt relationships where safely discoverable
-- RX/TX counters
-- explicit interface role
+Derive source interface/address, subnet, gateway, route used, PRIMARY interface/default-route owner, and LAB/PRIMARY isolation state.
 
-Dedicated LAB PATH view:
+No route mutation.
+
+### 8E — Virtual / bridge / tunnel relationships
+
+Read-only Docker/libvirt bridge relationships, master membership, VPN/tunnel devices, and other virtual topology where safely inferable.
+
+### 8F — Wi-Fi discovery backend
+
+Use NetworkManager-compatible scanning for connectable wireless networks and expose selected adapter, scan readiness, SSID, BSSID, signal, band, channel, frequency, security, saved-profile state, and connected state.
+
+### 8G — Saved-profile connection manager
+
+Controlled connection/disconnection/reconnection of already-saved NetworkManager profiles on a selected managed adapter, with pre/post validation of NetworkManager, addressing, default-route ownership, and PRIMARY protection.
+
+No global NetworkManager restart/kill.
+
+### 8H — Secure new-network authentication
+
+Add previously-unsaved network authentication only after 8G is stable. Secrets must not appear in JSON/logs/process arguments. Cancellation/failure must leave routing sane.
+
+### 8I — NETWORK Quickshell tab
+
+Add:
 
 ```text
-source interface
-source address
-subnet
-gateway
-default-route ownership
-primary internet interface
-protection / isolation state
+CONTROL | TRAFFIC | CAPTURES | NETWORK
 ```
 
-Phase 8 safety rules:
+within the accepted `1040 × 720` shell.
 
-- PRIMARY remains heavily protected.
-- NETWORK cannot bypass CONTROL safety.
-- Start with read-only topology before adding any controlled actions.
-- Reuse existing physical identity and default-route guards instead of duplicating them.
-- Do not couple Docker/libvirt state changes into initial discovery.
+Initial UI instruments:
 
-Phase 8 begins from the Phase 7 checkpoint.
+- adapter/device list
+- role/status badges
+- addressing/routing context
+- LAB PATH
+- radar-style Wi-Fi scanner
+- selected SSID detail card
+- connection state/actions
+- explicit blocked state for monitor/unmanaged adapters
+
+Existing tabs remain stabilized surfaces.
+
+### 8J — Regression + checkpoint
+
+Acceptance requires correct topology, route ownership, saved-profile connect/disconnect, secure new-network authentication if included, no credential leakage, PRIMARY protection, no global NetworkManager disruption, prior-tab regression passes, NETWORK UI pass, documentation, and a Phase 8 rollback checkpoint.
+
+Detailed contract: `docs/PHASE8_NETWORK_PLAN.md`.
 
 ---
 
@@ -257,7 +323,7 @@ Phase 8 begins from the Phase 7 checkpoint.
 
 Status: **Planned**
 
-Initial scope is current-channel passive survey only: BSSID/SSID, frame counts, timestamps, beacon/probe summaries, frame-type mix, security advertisement, vendor/OUI, and signal metadata where radiotap supports it reliably.
+Current-channel passive wireless situational awareness from monitor-mode observations and/or saved captures: BSSID/SSID, frame counts, timestamps, beacon/probe summaries, frame-type mix, security advertisement, OUI/vendor, and signal metadata where radiotap supports it reliably.
 
 Explicit first-iteration non-goals: channel hopping, deauthentication, frame injection, and disruptive active scanning.
 
@@ -288,5 +354,8 @@ Every expansion phase must preserve:
 7. Capture never gains a root/pkexec path.
 8. Only `capture run` may initiate capture.
 9. New-feature failure cannot mutate unrelated network state.
-10. CONTROL and TRAFFIC remain regression-tested surfaces.
-11. Each accepted phase receives a rollback checkpoint before the next phase starts.
+10. NETWORK cannot bypass existing CONTROL radio safety.
+11. Wi-Fi credentials never enter WiFiLab logs/JSON.
+12. NETWORK connectable scans and SURVEY passive scans remain separate concepts.
+13. Accepted prior tabs remain regression-tested surfaces.
+14. Each accepted phase receives a rollback checkpoint before the next phase starts.
