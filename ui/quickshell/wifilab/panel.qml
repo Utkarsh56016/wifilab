@@ -412,7 +412,7 @@ ShellRoot {
                     Rectangle {
                         x: (parent.width - width) / 2
                         y: 4
-                        width: 250
+                        width: 373
                         height: 36
                         radius: 13
                         color: Qt.rgba(0,0,0,0.24)
@@ -420,7 +420,7 @@ ShellRoot {
                         border.color: app.outline
 
                         Repeater {
-                            model: ["CONTROL", "TRAFFIC"]
+                            model: ["CONTROL", "TRAFFIC", "CAPTURES"]
                             delegate: Rectangle {
                                 required property string modelData
                                 required property int index
@@ -528,7 +528,7 @@ ShellRoot {
                     clip: true
 
                     GlassCard {
-                        visible: !app.inspectingProtected && app.status.selected && !app.status.present
+                        visible: app.activeTab !== 2 && !app.inspectingProtected && app.status.selected && !app.status.present
                         anchors.fill: parent
                         fillColor: app.surfaceHigh
                         outlineColor: app.warning
@@ -551,6 +551,12 @@ ShellRoot {
                         id: trafficView
                         anchors.fill: parent
                         visible: (app.inspectingProtected || !app.status.selected || app.status.present) && app.activeTab === 1
+                        backend: app
+                    }
+
+                    CapturesDashboard {
+                        anchors.fill: parent
+                        visible: app.activeTab === 2
                         backend: app
                     }
                 }
