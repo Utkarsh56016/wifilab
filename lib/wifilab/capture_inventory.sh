@@ -24,13 +24,15 @@ wifilab_capture_created_at_from_id() {
 }
 
 wifilab_capture_manifest_string_field() {
-    local manifest=$1 key=$2
-    grep -o '"'"$key"'":"[^"]*"' "$manifest" 2>/dev/null | head -n 1 | cut -d'"' -f4
+    local manifest=$1 key=$2 value=''
+    value=$(grep -o '"'"$key"'":"[^"]*"' "$manifest" 2>/dev/null | head -n 1 | cut -d'"' -f4 || true)
+    printf '%s\n' "$value"
 }
 
 wifilab_capture_manifest_uint_field() {
-    local manifest=$1 key=$2
-    grep -o '"'"$key"'":[0-9][0-9]*' "$manifest" 2>/dev/null | head -n 1 | cut -d: -f2
+    local manifest=$1 key=$2 value=''
+    value=$(grep -o '"'"$key"'":[0-9][0-9]*' "$manifest" 2>/dev/null | head -n 1 | cut -d: -f2 || true)
+    printf '%s\n' "$value"
 }
 
 wifilab_capture_manifest_state() {
@@ -150,13 +152,15 @@ wifilab_captures_json() {
 
 wifilab_capture_latest_json() {
     local name='' path
+    local -a capture_names=()
 
-    name=$(wifilab_capture_names | head -n 1)
-    if [[ -z $name ]]; then
+    mapfile -t capture_names < <(wifilab_capture_names)
+    if (( ${#capture_names[@]} == 0 )); then
         printf '{"ok":true,"capture":null}\n'
         return 0
     fi
 
+    name=${capture_names[0]}
     wifilab_capture_id_valid "$name" || {
         printf '{"ok":false,"error":"capture_invalid","message":"latest WiFiLab capture identifier is invalid"}\n'
         return 4
