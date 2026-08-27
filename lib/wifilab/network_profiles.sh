@@ -50,6 +50,16 @@ wifilab_normalize_mac() {
     printf '%s\n' "${value,,}"
 }
 
+wifilab_iface_permanent_mac() {
+    local iface=$1 value
+
+    value=$(ip -j link show dev "$iface" 2>/dev/null |
+        jq -r '.[0].permaddr // .[0].address // ""' 2>/dev/null |
+        head -n1 || true)
+
+    printf '%s\n' "$value"
+}
+
 wifilab_profile_active_device() {
     local uuid=$1
     LC_ALL=C nmcli -t -e no -f UUID,DEVICE connection show --active 2>/dev/null |
@@ -217,7 +227,7 @@ wifilab_network_profile_preflight_json() {
     nm_state=$(jq -r '.nm_state // ""' <<<"$iface_json")
     nm_managed=$(jq -r 'if .nm_managed == null then "unknown" else (.nm_managed|tostring) end' <<<"$iface_json")
     nm_type=$(jq -r '.nm_type // ""' <<<"$iface_json")
-    iface_mac=$(jq -r '.mac // ""' <<<"$iface_json")
+    iface_mac=$(wifilab_iface_permanent_mac "$iface")
     role=$(jq -r '.role // "UNKNOWN"' <<<"$role_json")
     protected=$(jq -r '.protected // false' <<<"$role_json")
 
