@@ -2,46 +2,51 @@
 
 ## Scope
 
-This plan is for the current Archcraft workstation build.
+This plan governs the current Archcraft workstation build.
 
-Portability and cross-distribution packaging are intentionally deferred. The immediate goal is to expand WiFiLab into a stable wireless-lab, pentesting-support, adapter-management, capture-analysis, and network-context utility on the validated workstation.
+Portability and broad cross-distribution packaging are intentionally deferred. The immediate goal is to expand WiFiLab as a stable wireless-lab, adapter-management, capture-analysis, network-context, and authorized pentesting-support utility on the validated workstation.
 
 ## Stable Baseline
 
-Already stabilized:
+Accepted primary UI:
 
 ```text
-CONTROL
-TRAFFIC
+CONTROL | TRAFFIC | CAPTURES
 ```
 
-Known-good functional checkpoint:
+Current functional checkpoint:
 
 ```text
-commit: ac1af9f4c970d02d906a5625619a75f72a1faeec
-branch: checkpoint/phase6-capture-ui-validated-2026-08-26
+commit: 17c79c134c1b66f56cc9821191e7c1fdbb533709
+branch: checkpoint/phase7-captures-validated-2026-08-27
 ```
 
-Current validated capabilities include:
+Validated baseline capabilities:
 
-- persistent physical adapter identity
-- protected primary Wi-Fi/default-route guard
+- persistent physical LAB-adapter identity
+- protected PRIMARY Wi-Fi/default-route guard
 - managed/monitor lifecycle
 - legal channel control
-- NetworkManager coordination
-- non-root bounded dumpcap capture
-- PCAPNG output with radiotap
-- capture UI control
-- reboot/re-enumeration recovery
-- restore to managed mode without disturbing the primary network path
+- scoped NetworkManager coordination
+- non-root bounded `dumpcap` capture
+- PCAPNG + radiotap output
+- capture manifest sidecars + SHA-256
+- legacy capture compatibility
+- offline `tshark -r` analysis
+- `capinfos` inspection
+- CAPTURES library/inspector UI
+- safe viewer/reveal actions
+- no repeated live `tshark -i` protocol sampling
+- no persistent capture-analysis process churn
+- accepted `1040 × 720` shell geometry
 
-## Final Workstation Navigation Target
+## Final Navigation Target
 
 ```text
 CONTROL | TRAFFIC | CAPTURES | NETWORK | SURVEY | LAB
 ```
 
-SYSTEM/DOCTOR remains a utility drawer/panel rather than a permanent primary tab unless its scope later justifies promotion.
+SYSTEM/DOCTOR remains a utility drawer/panel unless later scope justifies promotion.
 
 ---
 
@@ -51,132 +56,151 @@ Status: **Stable**
 
 Purpose:
 
-> Control the selected physical wireless lab adapter safely.
+> Safely control the selected physical wireless LAB adapter.
 
 Primary instruments:
 
 - adapter selector
 - device/vendor identity
-- driver
 - runtime interface/PHY
+- driver
 - MAN/MON state
 - NetworkManager state
-- link state
 - band/channel/frequency
 - regulatory state
 - monitor capability
 - protected/default-route guard
 - Restore
-- activity/error history
+- activity/errors
 
-Policy:
-
-- Do not turn CONTROL into a general pentesting-tool launcher.
-- New feature-specific controls belong in their own tabs.
+Policy: do not turn CONTROL into a general security-tool launcher.
 
 ---
 
 ## TRAFFIC — Live Adapter Telemetry
 
-Status: **Stable baseline; protocol path to be simplified later**
+Status: **Stable**
 
 Purpose:
 
-> Show what the selected lab adapter is doing right now.
+> Show current LAB-adapter telemetry and provide the bounded capture action.
 
 Primary instruments:
 
-- RX bytes/sec
-- TX bytes/sec
-- RX packets/sec
-- TX packets/sec
-- live traffic graph
-- current interface/PHY
-- current mode/channel/frequency
+- RX/TX bytes/sec
+- RX/TX packets/sec
+- live graph
+- current runtime adapter/mode
 - capture ready/busy/blocked state
 - bounded capture action
-- saved-capture count
-- drop/error counters where reliable data exists
+- saved capture count
+- offline latest-capture protocol summary
 
-Planned cleanup:
-
-- stop using periodic live `tshark` capture as the long-term protocol-display mechanism
-- derive protocol/frame summaries from saved PCAPNG instead
+The old periodic live `tshark -i` sampling path has been removed. Protocol visualization now derives from saved capture data.
 
 ---
 
 ## CAPTURES — PCAP Workspace
 
-Expansion priority: **1 — next feature**
+Status: **Accepted / checkpointed**
 
 Purpose:
 
-> Turn saved bounded captures into a deterministic analysis workspace.
+> Turn saved bounded captures into a deterministic offline analysis workspace.
 
-Planned view:
+Implemented:
 
 ```text
-CAPTURE SESSIONS
---------------------------------------------------------
-Time        Interface   Ch   Packets   Size    Duration
-02:56:55    wlan2       11   228       38KB    10.17s
-02:56:37    wlan2       11   4         820B     3.49s
-...
+CAPTURE LIBRARY
+  -> newest-first saved capture inventory
+  -> complete / legacy / invalid metadata state
+  -> runtime capture-time adapter/channel metadata where available
 
-Selected capture
---------------------------------------------------------
-Metadata                  Frame / protocol summary
-Packets                   Data
-Duration                  Beacon
-Size                      Probe Request
-Interface                 Probe Response
-Channel                   IPv4 / IPv6 / ARP / etc.
-Encapsulation
-Hash
-
-[ Open Wireshark ] [ Details ] [ Reveal File ]
+CAPTURE INSPECTOR
+  -> packets
+  -> duration
+  -> size
+  -> file type
+  -> encapsulation
+  -> first / last frame timestamp
+  -> SHA-256 integrity state
+  -> offline protocol labels
+  -> Reveal
+  -> Open in Wireshark when available
 ```
 
-Backend/instruments:
+Backend contracts:
 
-- richer saved-capture inventory JSON
-- latest-capture JSON
-- timestamp
-- interface used at capture time
-- channel/frequency metadata where available
-- packet count
-- duration
-- size
-- encapsulation
-- SHA256/hash metadata
-- offline `tshark -r` frame/protocol breakdown
-- optional Wireshark GUI availability
-- safe open/reveal action
+```bash
+wifilab captures --json
+wifilab capture latest --json
+wifilab capture inspect <id|latest> --json
+wifilab capture protocols <id|latest> --json
+wifilab capture viewer status --json
+wifilab capture open <id|latest>
+wifilab capture reveal <id|latest>
+```
 
-Explicit non-goals for first iteration:
+Compatibility:
 
-- capture deletion
-- rename/tagging
-- long-running background capture daemon
-- attack workflows
+```bash
+wifilab protocols --json
+```
 
-Acceptance gate:
+reads the latest saved capture offline.
 
-- all metadata comes from the selected file, not a new live capture
-- TRAFFIC no longer needs periodic live tshark sampling for protocol visualization
-- opening/analyzing a saved file does not mutate radio or networking state
+Accepted CAPTURES safety properties:
+
+- only `capture run` can invoke live capture
+- saved analysis never opens a live interface
+- capture IDs are validated; arbitrary paths are not accepted
+- traversal, missing files, and symlinks are refused
+- old Phase 6 PCAPs remain valid without rewriting them
+- manifest failure does not delete a successful PCAP
+- `capinfos` runs only on demand
+- `tshark` analysis is `-r` only
+- viewer/reveal are normal-user desktop actions
+- viewer absence is represented explicitly rather than forcing installation
+
+Current workstation viewer state:
+
+```text
+Wireshark CLI tools: available
+Wireshark GUI:       unavailable
+Reveal opener:       xdg-open
+```
+
+Deferred packaging item:
+
+- matching desktop registration for `io.github.utkarsh56016.wifilab` to remove the current non-blocking portal AppId warning.
 
 ---
 
 ## NETWORK — Workstation Networking Device Manager
 
-Expansion priority: **2**
+Expansion priority: **1 — next feature**
 
 Purpose:
 
-> Show and manage the workstation network topology while making the lab path and protected production path explicit.
+> Make the workstation network topology visible while making the protected production path and intended LAB path explicit.
 
-This phase introduces a backend interface-role model:
+### Phase 8 implementation order
+
+Build NETWORK with the same bounded methodology:
+
+```text
+8A  read-only interface inventory
+8B  address + route/default-route model
+8C  interface role model
+8D  LAB PATH derivation
+8E  virtual/bridge/tunnel relationships
+8F  NETWORK QML tab
+8G  regression + checkpoint
+```
+
+Do not start with mutations.
+
+### Interface role model
 
 ```text
 PRIMARY
@@ -186,250 +210,135 @@ VIRTUAL
 TUNNEL
 ```
 
-Expected workstation examples:
+Expected examples on the workstation may include:
 
 ```text
-wlan0     PRIMARY
-wlan2     LAB
-eno1      AUXILIARY
-virbr0    VIRTUAL
-docker0   VIRTUAL
-tun*/wg*  TUNNEL
+wlan0      PRIMARY
+wlanX      LAB
+Ethernet   AUXILIARY
+virbr0     VIRTUAL
+docker0    VIRTUAL
+tun*/wg*   TUNNEL
 ```
 
-Planned view:
+Runtime names are observations, not persistent physical LAB identity.
 
-```text
-NETWORK DEVICES
-----------------------------------------------------------
-wlan0    Wi-Fi      MAN     CONNECTED      PRIMARY
-wlan2    Wi-Fi      MAN     DISCONNECTED   LAB
-eno1     Ethernet   --      DOWN           AUXILIARY
-virbr0   Bridge     --      UP             VIRTUAL
-docker0  Bridge     --      UP             VIRTUAL
+### Planned read-only instruments
 
-Selected interface
-----------------------------------------------------------
-IDENTITY             NETWORK STATE
-iface / phy          mode
-kind                 link state
-driver               NM state
-MAC                  MTU
-
-ADDRESSING           ROUTING
-IPv4                 default-route owner
-IPv6                 routes
-gateway              metric
-DNS                  protected state
-
-LAB PATH
-source interface
-source address
-subnet
-gateway
-default route yes/no
-primary internet interface
-isolation/protection state
-```
-
-Planned instruments:
-
-- physical and virtual interface inventory
-- interface type/kind
-- driver/PHY for wireless devices
+- interface name and type/kind
+- wireless PHY/driver where applicable
 - MAN/MON state where applicable
-- link state
+- link/operstate
 - NetworkManager state
-- IPv4/IPv6
-- subnet/prefix
+- MAC
+- MTU
+- IPv4 / IPv6 addresses and prefix lengths
+- subnet context
 - gateway
 - DNS context
-- MTU
-- MAC
-- RX/TX counters
+- routes + metrics
 - default-route ownership
-- route metric
-- role
 - protected state
 - bridge/master membership
+- virtual interface relationships
 - tunnel/VPN context
-- Docker/libvirt relationships where discoverable without invasive coupling
+- Docker/libvirt relationships where safely inferable
+- RX/TX counters
+- explicit role
 
-First controlled actions:
+### LAB PATH instrument
 
-- assign/set LAB role for the selected physical wireless lab adapter
-- inspect PRIMARY path
-- MAN/MON/Restore through existing backend guards
-- optional per-interface disconnect/release only after separate validation
+```text
+LAB PATH
+------------------------------
+source interface
+source address
+subnet/prefix
+gateway
+route used for target/default
+PRIMARY interface
+PRIMARY default-route owner
+LAB/PRIMARY isolation state
+```
 
-Safety rule:
+### Phase 8 safety rules
 
-> NETWORK may expose the whole topology, but PRIMARY remains heavily protected and cannot become a convenient bypass around CONTROL safety.
+- PRIMARY remains protected and cannot be converted into a convenience LAB target.
+- Existing default-route safety code remains authoritative.
+- Physical LAB identity remains tied to existing persistent selection metadata.
+- Do not duplicate or weaken CONTROL guards.
+- Initial Docker/libvirt/tunnel discovery is read-only.
+- No global NetworkManager manipulation.
+- No route mutation until a later bounded subphase explicitly defines and validates it.
 
 ---
 
 ## SURVEY — Passive Wireless Environment
 
-Expansion priority: **3**
+Expansion priority: **2**
 
 Purpose:
 
-> Build passive situational awareness from monitor-mode observations.
+> Build passive current-channel situational awareness from monitor-mode observations and/or saved captures.
 
-Initial scope is **current-channel passive survey only**.
-
-Planned view:
-
-```text
-PASSIVE SURVEY                       CH 11 / 2462 MHz
-----------------------------------------------------------
-BSSID               SSID       Frames    Last seen
-xx:xx:xx:xx:xx:xx   LAB-AP     154       now
-...
-
-FRAME TYPES                     CHANNEL ACTIVITY
-Beacon                          packet rate
-Probe Request                   observed devices
-Probe Response                  signal summary where valid
-Data
-Control
-```
-
-Planned instruments where the capture data supports them:
+Initial instruments where capture metadata supports them:
 
 - BSSID
-- SSID/hidden SSID state
-- current channel
+- SSID / hidden state
+- observed channel
+- first/last seen
 - frame count
-- first seen
-- last seen
-- beacon count
-- probe requests/responses
-- data/control/management frame mix
-- advertised security information
-- OUI/vendor summary
-- RSSI/signal values when reliable radiotap metadata is present
-- passive channel activity summary
+- beacon/probe counts
+- management/data/control mix
+- advertised security metadata
+- OUI/vendor
+- RSSI/signal values when radiotap data is reliable
 
-Explicit non-goals for first iteration:
-
-- channel hopping
-- deauthentication
-- injection
-- association attacks
-- active scanning that disrupts the selected monitor workflow
+First-iteration non-goals: channel hopping, deauthentication, injection, association attacks, disruptive active scanning.
 
 ---
 
 ## LAB — Controlled Pentesting Workspace
 
-Expansion priority: **4**
+Expansion priority: **3**
 
 Purpose:
 
-> Coordinate lab-security workflows only after WiFiLab knows the selected LAB interface, protected PRIMARY path, and validated target/scope context.
-
-Planned top context:
-
-```text
-LAB WORKSPACE
-----------------------------------------------------------
-Lab interface       wlan2
-Mode                managed/monitor
-Lab subnet          ...
-Primary interface   wlan0 [PROTECTED]
-Scope state         validated / incomplete
-```
+> Coordinate authorized lab-security workflows only after NETWORK provides a validated LAB interface, protected PRIMARY path, and explicit scope context.
 
 Planned modules:
 
-### Discovery
-
-- neighbour/ARP table
-- gateway
-- known lab hosts
-- local subnet context
-- reachable-host observations
-- DNS context
-
-### Services
-
-- selected host
-- observed/discovered services
-- saved observations
-- later optional integration with external discovery/scanning tools
-
-### Wireless
-
-- selected BSSID/AP
-- channel
-- observed security metadata
-- capture references
-- survey references
-
-### Session
-
-- notes
-- commands/actions executed through WiFiLab
-- timestamps
-- capture references
-- target/scope context
+- Discovery
+- Services
+- Wireless
+- Session / notes / capture references / scope
 
 Design rule:
 
-WiFiLab should orchestrate and constrain external lab tools rather than reimplementing every security utility.
+> WiFiLab orchestrates and constrains external lab tools; it does not reimplement every security utility.
 
-Future integrations may include tools such as `tshark`, `nmap`, Wireshark, and separately reviewed aircrack-ng workflows, but only through validated backend contracts and LAB-role/scope checks.
-
-Deferred advanced wireless operations:
-
-- channel hopping
-- handshake-oriented workflows
-- frame injection
-- deauthentication
-- other active wireless attack operations
-
-These require their own design and safety phase and are not implied by creation of the LAB tab.
+Active wireless attack workflows remain separate future safety/design work.
 
 ---
 
-## SYSTEM / DOCTOR Utility Drawer
+## SYSTEM / DOCTOR Utility
 
-Status: **Existing capability, to expand incrementally**
+Status: **Existing, incremental**
 
-Keep this out of the primary navigation for now.
+Keep diagnostics available without turning SYSTEM into an alternate mutation path.
 
-Planned information:
-
-- backend status
-- selected physical identity
-- helper/polkit availability
-- capture permission
-- `dumpcap`/`tshark`/viewer availability
-- regulatory state
-- protected/default-route guard status
-- dependency checks
-- backend errors
-- data/capture paths
-
-This is diagnostics and capability state, not a mutation workspace.
+Useful capability state includes backend status, physical selection, helper/polkit availability, capture permission, dumpcap/tshark/capinfos/viewer state, regulatory state, protected/default-route state, errors, and data paths.
 
 ---
 
 ## Expansion Order
 
 ```text
-CURRENT STABLE STATE
-CONTROL + TRAFFIC + bounded capture
+CURRENT ACCEPTED STATE
+CONTROL + TRAFFIC + CAPTURES
         |
         v
-Phase 7  CAPTURES
-        |
-        v
-stabilize + checkpoint
-        |
-        v
-Phase 8  NETWORK + interface roles/LAB path
+Phase 8  NETWORK
         |
         v
 stabilize + checkpoint
@@ -447,33 +356,27 @@ Phase 10 LAB
 stabilize + checkpoint
 ```
 
-No feature from a later phase is pulled forward unless it is required as a dependency and is explicitly added to the current phase scope before implementation begins.
+No later-phase feature is pulled forward unless it is an explicit dependency and is added to the active phase scope before implementation.
 
 ## UI Expansion Policy
 
-The window remains 1040×720 during this workstation expansion unless a dedicated shell change is required and separately validated.
+The window remains `1040 × 720` during workstation expansion unless a shell-size change is separately justified and validated.
 
-The header navigation will expand incrementally to support:
-
-```text
-CONTROL | TRAFFIC | CAPTURES | NETWORK | SURVEY | LAB
-```
-
-The active instrument area remains one tab at a time. Existing CONTROL and TRAFFIC layouts are treated as stabilized surfaces and should only receive localized changes required by validated dependencies.
+Existing CONTROL, TRAFFIC, and CAPTURES layouts are stabilized surfaces. New tabs should be added without broad refactoring of accepted geometry.
 
 ## Definition of Done for Every New Tab
 
-A tab is considered stable only when:
+A tab is stable only when:
 
-- its backend contract is validated independently of the UI
-- its primary success path works on the real workstation
-- meaningful refusal/error paths behave safely
-- primary `wlan0` connectivity remains protected
-- runtime lab adapter re-resolution remains correct
-- UI state agrees with backend JSON
-- CONTROL and TRAFFIC regression checks pass
-- no unexpected background process churn is introduced
+- backend contract works independently of UI
+- success path works on the real workstation
+- meaningful refusal/error paths are validated
+- PRIMARY `wlan0` connectivity remains protected
+- LAB physical identity remains correct across runtime names
+- UI agrees with backend JSON
+- prior tabs pass regression
+- no unexpected process churn exists
 - final documentation is updated
 - a rollback checkpoint branch is created
 
-See `docs/BUILD_AND_STABILIZATION_METHOD.md` for the required engineering cycle.
+See `docs/BUILD_AND_STABILIZATION_METHOD.md`.
