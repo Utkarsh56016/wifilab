@@ -33,6 +33,7 @@ source "$ROOT_DIR/lib/wifilab/network_context.sh"
 source "$ROOT_DIR/lib/wifilab/network_roles.sh"
 source "$ROOT_DIR/lib/wifilab/network_lab_path.sh"
 source "$ROOT_DIR/lib/wifilab/network_topology.sh"
+source "$ROOT_DIR/lib/wifilab/network_wifi_scan.sh"
 
 usage() {
     cat <<'EOF'
@@ -55,6 +56,7 @@ Usage:
   wifilab network roles --json
   wifilab network lab-path --json
   wifilab network topology --json
+  wifilab network wifi-scan <iface> --json
   wifilab capture status --json
   wifilab capture run [duration_seconds] [max_kib]
   wifilab capture latest --json
@@ -117,6 +119,12 @@ Read-only UI/agent data:
             metadata, sysfs master/lower relationships, veth peer evidence, and
             Phase 8 interface roles. Cross-namespace peers stay explicitly
             unresolved rather than being fabricated as local nodes.
+  network wifi-scan <iface> --json
+            Request an adapter-explicit NetworkManager connectable-Wi-Fi scan and
+            emit SSID/BSSID, signal percentage, frequency, channel, band,
+            security, saved-profile state, and connected state. Monitor-mode or
+            NetworkManager-unmanaged adapters return an explicit blocked state;
+            NETWORK never restores or changes their radio mode automatically.
   capture status --json
             Report whether bounded passive capture is available, permitted,
             safe for the selected adapter, and ready in the current radio mode.
@@ -171,8 +179,10 @@ Safety:
   selection again at capture time and refuses protected interfaces. Saved-PCAP
   analysis, inspection, viewer launch and reveal stay confined to validated
   WiFiLab capture identifiers and never require sudo or pkexec. NETWORK
-  8A/8B/8C/8D/8E are read-only and perform no NetworkManager, route, DNS, link,
-  radio, bridge, tunnel, container, virtualization, or connectivity mutation.
+  8A/8B/8C/8D/8E are read-only. NETWORK 8F may request a NetworkManager Wi-Fi
+  rescan on an explicit managed Wi-Fi interface, but never activates, disconnects,
+  modifies, creates, or forgets a connection and never changes routes, DNS,
+  radio mode, NetworkManager ownership, bridge/tunnel state, or connectivity.
 EOF
 }
 
@@ -296,6 +306,10 @@ case "${1:-adapters}" in
             topology)
                 [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
                 wifilab_network_topology_json
+                ;;
+            wifi-scan)
+                [[ $# -eq 4 && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_wifi_scan_json "$3"
                 ;;
             *) usage >&2; exit 2 ;;
         esac
