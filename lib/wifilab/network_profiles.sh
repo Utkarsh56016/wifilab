@@ -35,6 +35,21 @@ wifilab_metric_json_value() {
     fi
 }
 
+wifilab_channel_json_value() {
+    local value=${1-}
+    if [[ $value =~ ^[0-9]+$ ]]; then
+        printf '%s\n' "$value"
+    else
+        printf 'null\n'
+    fi
+}
+
+wifilab_normalize_mac() {
+    local value=${1-}
+    value=${value//-/:}
+    printf '%s\n' "${value,,}"
+}
+
 wifilab_profile_active_device() {
     local uuid=$1
     LC_ALL=C nmcli -t -e no -f UUID,DEVICE connection show --active 2>/dev/null |
@@ -54,6 +69,7 @@ wifilab_network_profiles_json() {
     local raw line uuid type
     local name ssid autoconnect interface_name ipv4_never ipv6_never
     local ipv4_metric ipv6_metric ipv4_method ipv6_method active_device active
+    local permanent_mac bssid band channel cloned_mac
     local -a profiles=()
 
     raw=$(LC_ALL=C nmcli -t -e no -f UUID,TYPE connection show 2>/dev/null || true)
@@ -72,6 +88,11 @@ wifilab_network_profiles_json() {
         ssid=$(wifilab_nm_profile_field "$uuid" 802-11-wireless.ssid)
         autoconnect=$(wifilab_bool_from_nm "$(wifilab_nm_profile_field "$uuid" connection.autoconnect)")
         interface_name=$(wifilab_nm_profile_field "$uuid" connection.interface-name)
+        permanent_mac=$(wifilab_nm_profile_field "$uuid" 802-11-wireless.mac-address)
+        bssid=$(wifilab_nm_profile_field "$uuid" 802-11-wireless.bssid)
+        band=$(wifilab_nm_profile_field "$uuid" 802-11-wireless.band)
+        channel=$(wifilab_channel_json_value "$(wifilab_nm_profile_field "$uuid" 802-11-wireless.channel)")
+        cloned_mac=$(wifilab_nm_profile_field "$uuid" 802-11-wireless.cloned-mac-address)
         ipv4_never=$(wifilab_bool_from_nm "$(wifilab_nm_profile_field "$uuid" ipv4.never-default)")
         ipv6_never=$(wifilab_bool_from_nm "$(wifilab_nm_profile_field "$uuid" ipv6.never-default)")
         ipv4_metric=$(wifilab_metric_json_value "$(wifilab_nm_profile_field "$uuid" ipv4.route-metric)")
@@ -88,8 +109,13 @@ wifilab_network_profiles_json() {
             --arg type "$type" \
             --arg interface_name "$interface_name" \
             --arg active_device "$active_device" \
+            --arg permanent_mac "$permanent_mac" \
+            --arg bssid "$bssid" \
+            --arg band "$band" \
+            --arg cloned_mac "$cloned_mac" \
             --arg ipv4_method "$ipv4_method" \
             --arg ipv6_method "$ipv6_method" \
+            --argjson channel "$channel" \
             --argjson autoconnect "$autoconnect" \
             --argjson active "$active" \
             --argjson ipv4_never "$ipv4_never" \
@@ -105,6 +131,13 @@ wifilab_network_profiles_json() {
               interface_name:$interface_name,
               active:$active,
               active_device:$active_device,
+              compatibility:{
+                permanent_mac:$permanent_mac,
+                bssid:$bssid,
+                band:$band,
+                channel:$channel,
+                cloned_mac:$cloned_mac
+              },
               route_policy:{
                 ipv4:{method:$ipv4_method, never_default:$ipv4_never, metric:$ipv4_metric},
                 ipv6:{method:$ipv6_method, never_default:$ipv6_never, metric:$ipv6_metric}
@@ -144,8 +177,8 @@ wifilab_network_profile_preflight_json() {
 
     local inventory_json roles_json context_json profiles_json
     local iface_json role_json profile_json
-    local mode nm_state nm_managed nm_type role protected
-    local profile_active profile_active_device profile_interface
+    local mode nm_state nm_managed nm_type role protected iface_mac
+    local profile_active profile_active_device profile_interface profile_mac
     local ipv4_never ipv6_never
     local -a blocked=() risks=()
 
@@ -184,12 +217,14 @@ wifilab_network_profile_preflight_json() {
     nm_state=$(jq -r '.nm_state // ""' <<<"$iface_json")
     nm_managed=$(jq -r 'if .nm_managed == null then "unknown" else (.nm_managed|tostring) end' <<<"$iface_json")
     nm_type=$(jq -r '.nm_type // ""' <<<"$iface_json")
+    iface_mac=$(jq -r '.mac // ""' <<<"$iface_json")
     role=$(jq -r '.role // "UNKNOWN"' <<<"$role_json")
     protected=$(jq -r '.protected // false' <<<"$role_json")
 
     profile_active=$(jq -r '.active' <<<"$profile_json")
     profile_active_device=$(jq -r '.active_device // ""' <<<"$profile_json")
     profile_interface=$(jq -r '.interface_name // ""' <<<"$profile_json")
+    profile_mac=$(jq -r '.compatibility.permanent_mac // ""' <<<"$profile_json")
     ipv4_never=$(jq -r '.route_policy.ipv4.never_default' <<<"$profile_json")
     ipv6_never=$(jq -r '.route_policy.ipv6.never_default' <<<"$profile_json")
 
@@ -204,6 +239,10 @@ wifilab_network_profile_preflight_json() {
 
     if [[ -n $profile_interface && $profile_interface != "$iface" ]]; then
         blocked+=("profile_bound_to_other_interface")
+    fi
+
+    if [[ -n $profile_mac && -n $iface_mac && $(wifilab_normalize_mac "$profile_mac") != $(wifilab_normalize_mac "$iface_mac") ]]; then
+        blocked+=("profile_mac_bound_to_other_device")
     fi
 
     if [[ $profile_active == true && -n $profile_active_device && $profile_active_device != "$iface" ]]; then
@@ -229,6 +268,7 @@ wifilab_network_profile_preflight_json() {
 
     jq -cn \
       --arg iface "$iface" \
+      --arg iface_mac "$iface_mac" \
       --arg role "$role" \
       --arg mode "$mode" \
       --arg nm_state "$nm_state" \
@@ -245,6 +285,7 @@ wifilab_network_profile_preflight_json() {
         mutation_performed:false,
         target:{
           interface:$iface,
+          permanent_mac:$iface_mac,
           role:$role,
           mode:$mode,
           nm_state:$nm_state,
