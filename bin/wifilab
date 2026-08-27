@@ -30,6 +30,7 @@ source "$ROOT_DIR/lib/wifilab/capture_inspect.sh"
 source "$ROOT_DIR/lib/wifilab/capture_viewer.sh"
 source "$ROOT_DIR/lib/wifilab/network_inventory.sh"
 source "$ROOT_DIR/lib/wifilab/network_context.sh"
+source "$ROOT_DIR/lib/wifilab/network_roles.sh"
 
 usage() {
     cat <<'EOF'
@@ -49,6 +50,7 @@ Usage:
   wifilab protocols --json
   wifilab network interfaces --json
   wifilab network context --json
+  wifilab network roles --json
   wifilab capture status --json
   wifilab capture run [duration_seconds] [max_kib]
   wifilab capture latest --json
@@ -92,11 +94,15 @@ Read-only UI/agent data:
   network interfaces --json
             Emit one read-only record for every kernel network interface with
             observed link, NetworkManager, wireless, driver, bus, MTU, master,
-            counter, and sysfs metadata. Phase 8 roles remain deferred.
+            counter, and sysfs metadata.
   network context --json
             Emit read-only IPv4/IPv6 addressing, NetworkManager DNS context,
             normalized main-table routes, gateways, default-route ownership,
             effective resolv.conf context, and current protection reasons.
+  network roles --json
+            Derive PRIMARY, LAB, AUXILIARY, VIRTUAL, and TUNNEL roles from the
+            persisted physical LAB selection plus current interface/route state.
+            LAB/default-route conflicts are reported explicitly and never hidden.
   capture status --json
             Report whether bounded passive capture is available, permitted,
             safe for the selected adapter, and ready in the current radio mode.
@@ -150,7 +156,7 @@ Safety:
   kills or restarts NetworkManager. Passive capture resolves that same physical
   selection again at capture time and refuses protected interfaces. Saved-PCAP
   analysis, inspection, viewer launch and reveal stay confined to validated
-  WiFiLab capture identifiers and never require sudo or pkexec. NETWORK 8A/8B
+  WiFiLab capture identifiers and never require sudo or pkexec. NETWORK 8A/8B/8C
   are read-only and perform no NetworkManager, route, DNS, link, or radio mutation.
 EOF
 }
@@ -263,6 +269,10 @@ case "${1:-adapters}" in
             context)
                 [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
                 wifilab_network_context_json
+                ;;
+            roles)
+                [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_roles_json
                 ;;
             *) usage >&2; exit 2 ;;
         esac
