@@ -25,7 +25,7 @@ wifilab_nmcli_split_escaped_colon() {
         if [[ $escaped == true ]]; then
             field+="$ch"
             escaped=false
-        elif [[ $ch == '\\' ]]; then
+        elif [[ $ch == \\ ]]; then
             escaped=true
         elif [[ $ch == ':' ]]; then
             WIFILAB_NMCLI_FIELDS+=("$field")
@@ -35,7 +35,7 @@ wifilab_nmcli_split_escaped_colon() {
         fi
     done
 
-    [[ $escaped == true ]] && field+='\\'
+    [[ $escaped == true ]] && field+='\'
     WIFILAB_NMCLI_FIELDS+=("$field")
 }
 
@@ -46,13 +46,13 @@ wifilab_nmcli_unescape_value() {
         if [[ $escaped == true ]]; then
             out+="$ch"
             escaped=false
-        elif [[ $ch == '\\' ]]; then
+        elif [[ $ch == \\ ]]; then
             escaped=true
         else
             out+="$ch"
         fi
     done
-    [[ $escaped == true ]] && out+='\\'
+    [[ $escaped == true ]] && out+='\'
     printf '%s\n' "$out"
 }
 
