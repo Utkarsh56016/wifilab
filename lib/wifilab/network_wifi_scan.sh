@@ -73,6 +73,8 @@ wifilab_wifi_band_for_frequency() {
     fi
 }
 
+# Saved-profile discovery intentionally reads only UUID/type and SSID. No
+# password, PSK, 802.1X secret, or secret-agent field is queried or emitted.
 wifilab_wifi_saved_ssids_json() {
     local raw line uuid type ssid
     local -a records=()
@@ -107,9 +109,10 @@ wifilab_wifi_saved_ssids_json() {
 wifilab_network_wifi_scan_json() {
     local iface=${1-}
     local inventory_json roles_json iface_json role_json
-    local mode nm_state nm_managed role phy driver connection
-    local saved_ssids_json raw line scan_error='' scan_rc=0
+    local mode nm_state nm_managed role phy driver connection nm_type
+    local saved_ssids_json raw line scan_rc=0
     local in_use ssid bssid signal freq channel security band connected hidden saved
+    local aps_json warnings_json
     local -a blocked_reasons=() access_points=() warnings=()
 
     [[ -n $iface ]] || {
@@ -150,6 +153,7 @@ wifilab_network_wifi_scan_json() {
     mode=$(jq -r '.mode // ""' <<<"$iface_json")
     nm_state=$(jq -r '.nm_state // ""' <<<"$iface_json")
     nm_managed=$(jq -r 'if .nm_managed == null then "unknown" else (.nm_managed|tostring) end' <<<"$iface_json")
+    nm_type=$(jq -r '.nm_type // ""' <<<"$iface_json")
     role=$(jq -r '.role // "UNKNOWN"' <<<"$role_json")
     phy=$(jq -r '.phy // ""' <<<"$iface_json")
     driver=$(jq -r '.driver // ""' <<<"$iface_json")
@@ -157,6 +161,7 @@ wifilab_network_wifi_scan_json() {
 
     [[ $mode == managed ]] || blocked_reasons+=("wireless_mode_not_managed")
     [[ $nm_managed == true ]] || blocked_reasons+=("networkmanager_not_managing_interface")
+    [[ $nm_type == wifi ]] || blocked_reasons+=("networkmanager_type_not_wifi")
     case "$nm_state" in
         unmanaged) blocked_reasons+=("networkmanager_state_unmanaged") ;;
         unavailable) blocked_reasons+=("networkmanager_state_unavailable") ;;
@@ -164,7 +169,16 @@ wifilab_network_wifi_scan_json() {
     esac
 
     if (( ${#blocked_reasons[@]} > 0 )); then
-        printf '%s\n' "${blocked_reasons[@]}" | jq -R . | jq -cs --arg iface "$iface" --arg role "$role" --arg mode "$mode" --arg nm_state "$nm_state" --arg nm_managed "$nm_managed" --arg phy "$phy" --arg driver "$driver" --arg connection "$connection" '
+        printf '%s\n' "${blocked_reasons[@]}" | jq -R . | jq -cs \
+          --arg iface "$iface" \
+          --arg role "$role" \
+          --arg mode "$mode" \
+          --arg nm_state "$nm_state" \
+          --arg nm_managed "$nm_managed" \
+          --arg nm_type "$nm_type" \
+          --arg phy "$phy" \
+          --arg driver "$driver" \
+          --arg connection "$connection" '
           unique as $reasons |
           {
             ok:true,
@@ -176,6 +190,7 @@ wifilab_network_wifi_scan_json() {
               mode:$mode,
               nm_state:$nm_state,
               nm_managed:(if $nm_managed == "true" then true elif $nm_managed == "false" then false else null end),
+              nm_type:$nm_type,
               phy:$phy,
               driver:$driver,
               connection:$connection
@@ -195,17 +210,16 @@ wifilab_network_wifi_scan_json() {
 
     saved_ssids_json=$(wifilab_wifi_saved_ssids_json)
 
+    # This requests only NetworkManager Wi-Fi discovery. It does not activate,
+    # disconnect, modify, or create any connection profile.
     if raw=$(LC_ALL=C nmcli -t -e yes \
         -f IN-USE,SSID,BSSID,SIGNAL,FREQ,CHAN,SECURITY \
-        device wifi list ifname "$iface" --rescan yes 2> >(scan_error=$(cat); typeset -p scan_error >/dev/null)); then
+        device wifi list ifname "$iface" --rescan yes 2>/dev/null); then
         scan_rc=0
     else
         scan_rc=$?
     fi
 
-    # Bash process substitution cannot safely assign scan_error in the parent;
-    # rerun only the error-free listing from cache if the active request failed,
-    # so the JSON can distinguish scan failure from a legitimate empty result.
     if (( scan_rc != 0 )); then
         wifilab_wifi_scan_error_json "scan_failed" "NetworkManager could not scan the requested wireless interface"
         return 4
@@ -232,13 +246,18 @@ wifilab_network_wifi_scan_json() {
         [[ $channel =~ ^[0-9]+$ ]] || channel=0
 
         band=$(wifilab_wifi_band_for_frequency "$freq")
-        [[ $in_use == '*' ]] && connected=true || connected=false
+        case "$in_use" in
+            '*'|yes) connected=true ;;
+            *) connected=false ;;
+        esac
         [[ -z $ssid ]] && hidden=true || hidden=false
+
         if jq -e --arg ssid "$ssid" 'index($ssid) != null' <<<"$saved_ssids_json" >/dev/null; then
             saved=true
         else
             saved=false
         fi
+
         [[ -n $security && $security != -- ]] || security='open'
 
         access_points+=("$(jq -cn \
@@ -269,11 +288,10 @@ wifilab_network_wifi_scan_json() {
         ')")
     done <<<"$raw"
 
-    local aps_json warnings_json
     if (( ${#access_points[@]} == 0 )); then
         aps_json='[]'
     else
-        aps_json=$(printf '%s\n' "${access_points[@]}" | jq -cs 'sort_by(-.signal_percent, .ssid, .bssid)')
+        aps_json=$(printf '%s\n' "${access_points[@]}" | jq -cs 'sort_by([-.signal_percent, .ssid, .bssid])')
     fi
 
     if (( ${#warnings[@]} == 0 )); then
@@ -288,6 +306,7 @@ wifilab_network_wifi_scan_json() {
         --arg mode "$mode" \
         --arg nm_state "$nm_state" \
         --arg nm_managed "$nm_managed" \
+        --arg nm_type "$nm_type" \
         --arg phy "$phy" \
         --arg driver "$driver" \
         --arg connection "$connection" \
@@ -303,6 +322,7 @@ wifilab_network_wifi_scan_json() {
             mode:$mode,
             nm_state:$nm_state,
             nm_managed:(if $nm_managed == "true" then true elif $nm_managed == "false" then false else null end),
+            nm_type:$nm_type,
             phy:$phy,
             driver:$driver,
             connection:$connection
