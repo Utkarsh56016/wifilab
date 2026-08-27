@@ -11,14 +11,23 @@ Item {
     property string selectedId: ""
     property var inspection: ({})
     property string requestedInspectId: ""
+    property var protocolDetails: ({ protocols: [] })
+    property string requestedProtocolId: ""
+    property var viewerStatus: ({ graphical_session: false, viewer: ({ available: false }), reveal: ({ available: false }) })
     property string inventoryMessage: ""
+    property string actionMessage: ""
+    property bool actionBusy: false
 
     readonly property var selectedCapture: selectedIndex >= 0 && selectedIndex < captures.length ? captures[selectedIndex] : ({})
     readonly property var inspectedCapture: inspection.capture || ({})
     readonly property var pcap: inspection.pcap || ({})
     readonly property var integrity: inspection.integrity || ({})
+    readonly property var protocols: protocolDetails.protocols || []
     readonly property bool hasSelection: selectedId.length > 0
     readonly property bool inspecting: inspectProcess.running
+    readonly property bool analyzingProtocols: captureProtocolProcess.running
+    readonly property bool viewerAvailable: viewerStatus.graphical_session === true && viewerStatus.viewer && viewerStatus.viewer.available === true
+    readonly property bool revealAvailable: viewerStatus.graphical_session === true && viewerStatus.reveal && viewerStatus.reveal.available === true
 
     function parseJson(text, fallback) {
         try { return JSON.parse(text) } catch (e) { return fallback }
@@ -84,7 +93,9 @@ Item {
             selectedIndex = -1
             selectedId = ""
             inspection = ({})
+            protocolDetails = ({ protocols: [] })
             requestedInspectId = ""
+            requestedProtocolId = ""
             return
         }
 
@@ -107,6 +118,12 @@ Item {
             requestedInspectId = selectedId
             startInspectIfIdle()
         }
+
+        var currentProtocolId = protocolDetails.capture_id || ""
+        if (selectedId.length > 0 && currentProtocolId !== selectedId) {
+            requestedProtocolId = selectedId
+            startProtocolIfIdle()
+        }
     }
 
     function refreshInventory() {
@@ -114,13 +131,22 @@ Item {
             inventoryProcess.exec(["wifilab", "captures", "--json"])
     }
 
+    function refreshViewerStatus() {
+        if (!viewerStatusProcess.running)
+            viewerStatusProcess.exec(["wifilab", "capture", "viewer", "status", "--json"])
+    }
+
     function selectCapture(index) {
         if (index < 0 || index >= captures.length) return
         selectedIndex = index
         selectedId = captures[index].id || captures[index].name || ""
         inspection = ({})
+        protocolDetails = ({ protocols: [] })
+        actionMessage = ""
         requestedInspectId = selectedId
+        requestedProtocolId = selectedId
         startInspectIfIdle()
+        startProtocolIfIdle()
     }
 
     function startInspectIfIdle() {
@@ -128,6 +154,27 @@ Item {
         var captureId = requestedInspectId
         requestedInspectId = ""
         inspectProcess.exec(["wifilab", "capture", "inspect", captureId, "--json"])
+    }
+
+    function startProtocolIfIdle() {
+        if (captureProtocolProcess.running || requestedProtocolId.length === 0) return
+        var captureId = requestedProtocolId
+        requestedProtocolId = ""
+        captureProtocolProcess.exec(["wifilab", "capture", "protocols", captureId, "--json"])
+    }
+
+    function revealSelected() {
+        if (actionBusy || !hasSelection || !revealAvailable) return
+        actionBusy = true
+        actionMessage = "Opening capture directory…"
+        revealProcess.exec(["wifilab", "capture", "reveal", selectedId])
+    }
+
+    function openSelected() {
+        if (actionBusy || !hasSelection || !viewerAvailable) return
+        actionBusy = true
+        actionMessage = "Opening saved capture in Wireshark…"
+        openProcess.exec(["wifilab", "capture", "open", selectedId])
     }
 
     Process {
@@ -157,12 +204,84 @@ Item {
         }
     }
 
+    Process {
+        id: captureProtocolProcess
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var parsed = root.parseJson(text, {})
+                if (parsed.ok === true && parsed.capture_id === root.selectedId)
+                    root.protocolDetails = parsed
+            }
+        }
+        onExited: function(code, status) {
+            if (code !== 0 && root.requestedProtocolId.length === 0)
+                root.protocolDetails = ({ protocols: [] })
+            root.startProtocolIfIdle()
+        }
+    }
+
+    Process {
+        id: viewerStatusProcess
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var parsed = root.parseJson(text, {})
+                if (parsed.ok === true) root.viewerStatus = parsed
+            }
+        }
+    }
+
+    Process {
+        id: revealProcess
+        stdout: StdioCollector { id: revealOut }
+        stderr: StdioCollector { id: revealErr }
+        onExited: function(code, status) {
+            root.actionBusy = false
+            var result = root.parseJson(revealOut.text, {})
+            if (code === 0 && result.ok === true) {
+                root.actionMessage = "Capture directory opened"
+                backend.log("Revealed saved capture directory")
+            } else {
+                var reason = result.message || revealErr.text.trim() || "reveal failed"
+                root.actionMessage = reason
+                backend.log("Reveal failed: " + reason)
+            }
+            root.refreshViewerStatus()
+        }
+    }
+
+    Process {
+        id: openProcess
+        stdout: StdioCollector { id: openOut }
+        stderr: StdioCollector { id: openErr }
+        onExited: function(code, status) {
+            root.actionBusy = false
+            var result = root.parseJson(openOut.text, {})
+            if (code === 0 && result.ok === true) {
+                root.actionMessage = "Opened saved capture in Wireshark"
+                backend.log("Opened saved capture in Wireshark")
+            } else {
+                var reason = result.message || openErr.text.trim() || "viewer launch failed"
+                root.actionMessage = reason
+                backend.log("Open failed: " + reason)
+            }
+            root.refreshViewerStatus()
+        }
+    }
+
     Timer {
         interval: 4000
         repeat: true
         running: root.visible
         triggeredOnStart: true
         onTriggered: root.refreshInventory()
+    }
+
+    Timer {
+        interval: 12000
+        repeat: true
+        running: root.visible
+        triggeredOnStart: true
+        onTriggered: root.refreshViewerStatus()
     }
 
     GlassCard {
@@ -411,7 +530,7 @@ Item {
             Rectangle {
                 x: 303; y: 160
                 width: 1
-                height: 220
+                height: 205
                 color: Qt.rgba(backend.outline.r, backend.outline.g, backend.outline.b, 0.70)
             }
 
@@ -428,27 +547,98 @@ Item {
             }
 
             Rectangle {
-                x: 15; y: 397
+                x: 15; y: 380
                 width: parent.width - 30
                 height: 1
                 color: Qt.rgba(backend.outline.r, backend.outline.g, backend.outline.b, 0.70)
             }
 
-            Text { x: 15; y: 412; text: "FIRST FRAME"; color: backend.textMuted; font.pixelSize: 8; font.bold: true }
-            Text { x: 100; y: 410; width: parent.width - 115; text: root.formatEpoch(root.pcap.start_epoch); color: backend.textPrimary; font.pixelSize: 9; elide: Text.ElideRight }
-            Text { x: 15; y: 436; text: "LAST FRAME"; color: backend.textMuted; font.pixelSize: 8; font.bold: true }
-            Text { x: 100; y: 434; width: parent.width - 115; text: root.formatEpoch(root.pcap.end_epoch); color: backend.textPrimary; font.pixelSize: 9; elide: Text.ElideRight }
+            Text { x: 15; y: 394; text: "FIRST FRAME"; color: backend.textMuted; font.pixelSize: 8; font.bold: true }
+            Text { x: 100; y: 392; width: parent.width - 115; text: root.formatEpoch(root.pcap.start_epoch); color: backend.textPrimary; font.pixelSize: 9; elide: Text.ElideRight }
+            Text { x: 15; y: 417; text: "LAST FRAME"; color: backend.textMuted; font.pixelSize: 8; font.bold: true }
+            Text { x: 100; y: 415; width: parent.width - 115; text: root.formatEpoch(root.pcap.end_epoch); color: backend.textPrimary; font.pixelSize: 9; elide: Text.ElideRight }
 
             Text {
-                x: 15
-                y: parent.height - 39
-                width: parent.width - 30
-                text: root.inspecting
-                      ? "Reading saved PCAP metadata…"
-                      : "Read-only: inventory + capinfos + SHA-256  •  no live interface access"
-                color: root.inspecting ? backend.info : backend.textMuted
+                x: 15; y: 443
+                text: "PROTOCOLS"
+                color: backend.textMuted
                 font.pixelSize: 8
-                horizontalAlignment: Text.AlignRight
+                font.bold: true
+            }
+
+            Flow {
+                x: 100; y: 438
+                width: parent.width - 115
+                height: 29
+                spacing: 5
+
+                Repeater {
+                    model: root.protocols.slice(0, 4)
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: protocolLabel.implicitWidth + 14
+                        height: 24
+                        radius: 8
+                        color: Qt.rgba(backend.info.r, backend.info.g, backend.info.b, 0.08)
+                        border.width: 1
+                        border.color: Qt.rgba(backend.info.r, backend.info.g, backend.info.b, 0.30)
+                        Text {
+                            id: protocolLabel
+                            anchors.centerIn: parent
+                            text: modelData.name + " " + modelData.count
+                            color: backend.textPrimary
+                            font.pixelSize: 8
+                        }
+                    }
+                }
+
+                Text {
+                    visible: root.protocols.length === 0
+                    text: root.analyzingProtocols ? "Reading saved PCAP…" : "No offline protocol labels"
+                    color: root.analyzingProtocols ? backend.info : backend.textMuted
+                    font.pixelSize: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+            }
+
+            CyberButton {
+                x: 15; y: 477
+                width: 122; height: 34
+                label: root.actionBusy ? "WORKING" : "REVEAL"
+                icon: "folder_open"
+                compact: true
+                enabled: root.revealAvailable && !root.actionBusy
+                accentColor: backend.dmsPrimary
+                textColor: backend.textPrimary
+                mutedColor: backend.textMuted
+                onClicked: root.revealSelected()
+            }
+
+            CyberButton {
+                x: 145; y: 477
+                width: 168; height: 34
+                label: root.viewerAvailable ? "OPEN WIRESHARK" : "WIRESHARK N/A"
+                icon: "troubleshoot"
+                compact: true
+                enabled: root.viewerAvailable && !root.actionBusy
+                accentColor: backend.info
+                textColor: backend.textPrimary
+                mutedColor: backend.textMuted
+                onClicked: root.openSelected()
+            }
+
+            Text {
+                x: 324; y: 484
+                width: parent.width - 339
+                text: root.actionMessage.length > 0
+                      ? root.actionMessage
+                      : (!root.viewerStatus.graphical_session
+                         ? "No graphical session"
+                         : (root.viewerAvailable ? "Saved-PCAP viewer ready" : "GUI Wireshark not installed"))
+                color: root.actionMessage.length > 0 ? backend.textPrimary : (root.viewerAvailable ? backend.success : backend.textMuted)
+                font.pixelSize: 8
+                wrapMode: Text.Wrap
+                maximumLineCount: 2
                 elide: Text.ElideRight
             }
         }
