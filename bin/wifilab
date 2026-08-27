@@ -26,6 +26,7 @@ source "$ROOT_DIR/lib/wifilab/telemetry.sh"
 source "$ROOT_DIR/lib/wifilab/capture.sh"
 source "$ROOT_DIR/lib/wifilab/capture_inventory.sh"
 source "$ROOT_DIR/lib/wifilab/capture_analysis.sh"
+source "$ROOT_DIR/lib/wifilab/capture_inspect.sh"
 
 usage() {
     cat <<'EOF'
@@ -47,6 +48,7 @@ Usage:
   wifilab capture run [duration_seconds] [max_kib]
   wifilab capture latest --json
   wifilab capture protocols <capture_id|latest> --json
+  wifilab capture inspect <capture_id|latest> --json
   wifilab captures --json
   wifilab monitor [iface]
   wifilab managed [iface]
@@ -89,6 +91,10 @@ Read-only UI/agent data:
             Analyze one validated WiFiLab-owned saved PCAPNG offline. Capture
             identifiers are confined to the WiFiLab capture directory; symbolic
             links and arbitrary filesystem paths are refused.
+  capture inspect <capture_id|latest> --json
+            Inspect one validated saved PCAPNG on demand. Returns lightweight
+            inventory metadata, SHA-256 integrity state, and capinfos-derived
+            file type, encapsulation, packet count, size, duration and timestamps.
   captures --json
             List WiFiLab-created captures. Existing name/bytes/file fields are
             retained while richer capture metadata is added.
@@ -117,7 +123,7 @@ Safety:
   physical metadata rather than wlanX/phyX names. WiFiLab never globally
   kills or restarts NetworkManager. Passive capture resolves that same physical
   selection again at capture time and refuses protected interfaces. Saved-PCAP
-  analysis is read-only and never opens a live wireless interface.
+  analysis and inspection are read-only and never open a live wireless interface.
 EOF
 }
 
@@ -137,6 +143,12 @@ doctor() {
         printf '  [optional] tshark -> %s (offline capture analysis available)\n' "$(command -v tshark)"
     else
         printf '  [optional] tshark -> not installed (offline protocol analysis disabled)\n'
+    fi
+
+    if command -v capinfos >/dev/null 2>&1; then
+        printf '  [optional] capinfos -> %s (capture inspection available)\n' "$(command -v capinfos)"
+    else
+        printf '  [optional] capinfos -> not installed (deep capture inspection disabled)\n'
     fi
 
     if command -v dumpcap >/dev/null 2>&1; then
@@ -221,6 +233,10 @@ case "${1:-adapters}" in
             protocols)
                 [[ $# -eq 4 && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
                 wifilab_capture_protocols_json "$3"
+                ;;
+            inspect)
+                [[ $# -eq 4 && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_capture_inspect_json "$3"
                 ;;
             *) usage >&2; exit 2 ;;
         esac
