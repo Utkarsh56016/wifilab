@@ -25,6 +25,7 @@ source "$ROOT_DIR/lib/wifilab/select.sh"
 source "$ROOT_DIR/lib/wifilab/telemetry.sh"
 source "$ROOT_DIR/lib/wifilab/capture.sh"
 source "$ROOT_DIR/lib/wifilab/capture_inventory.sh"
+source "$ROOT_DIR/lib/wifilab/capture_analysis.sh"
 
 usage() {
     cat <<'EOF'
@@ -45,6 +46,7 @@ Usage:
   wifilab capture status --json
   wifilab capture run [duration_seconds] [max_kib]
   wifilab capture latest --json
+  wifilab capture protocols <capture_id|latest> --json
   wifilab captures --json
   wifilab monitor [iface]
   wifilab managed [iface]
@@ -75,14 +77,18 @@ Read-only UI/agent data:
             Emit selected-interface RX/TX byte/packet counters. The UI derives
             rates from consecutive samples without packet capture or root.
   protocols --json
-            Take a short passive tshark sample when existing capture permissions
-            allow it. This command never escalates privileges.
+            Analyze the newest saved WiFiLab capture offline with tshark -r.
+            This compatibility command never opens a live capture interface.
   capture status --json
             Report whether bounded passive capture is available, permitted,
             safe for the selected adapter, and ready in the current radio mode.
   capture latest --json
             Emit the newest WiFiLab-created capture with manifest-backed
             historical radio metadata when available.
+  capture protocols <capture_id|latest> --json
+            Analyze one validated WiFiLab-owned saved PCAPNG offline. Capture
+            identifiers are confined to the WiFiLab capture directory; symbolic
+            links and arbitrary filesystem paths are refused.
   captures --json
             List WiFiLab-created captures. Existing name/bytes/file fields are
             retained while richer capture metadata is added.
@@ -110,7 +116,8 @@ Safety:
   NetworkManager connection or a system default route. Selection stores
   physical metadata rather than wlanX/phyX names. WiFiLab never globally
   kills or restarts NetworkManager. Passive capture resolves that same physical
-  selection again at capture time and refuses protected interfaces.
+  selection again at capture time and refuses protected interfaces. Saved-PCAP
+  analysis is read-only and never opens a live wireless interface.
 EOF
 }
 
@@ -127,9 +134,9 @@ doctor() {
     done
 
     if command -v tshark >/dev/null 2>&1; then
-        printf '  [optional] tshark -> %s\n' "$(command -v tshark)"
+        printf '  [optional] tshark -> %s (offline capture analysis available)\n' "$(command -v tshark)"
     else
-        printf '  [optional] tshark -> not installed (protocol sampling disabled)\n'
+        printf '  [optional] tshark -> not installed (offline protocol analysis disabled)\n'
     fi
 
     if command -v dumpcap >/dev/null 2>&1; then
@@ -210,6 +217,10 @@ case "${1:-adapters}" in
             latest)
                 [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
                 wifilab_capture_latest_json
+                ;;
+            protocols)
+                [[ $# -eq 4 && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_capture_protocols_json "$3"
                 ;;
             *) usage >&2; exit 2 ;;
         esac
