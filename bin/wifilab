@@ -28,6 +28,7 @@ source "$ROOT_DIR/lib/wifilab/capture_inventory.sh"
 source "$ROOT_DIR/lib/wifilab/capture_analysis.sh"
 source "$ROOT_DIR/lib/wifilab/capture_inspect.sh"
 source "$ROOT_DIR/lib/wifilab/capture_viewer.sh"
+source "$ROOT_DIR/lib/wifilab/network_inventory.sh"
 
 usage() {
     cat <<'EOF'
@@ -45,6 +46,7 @@ Usage:
   wifilab channels --json
   wifilab telemetry --json
   wifilab protocols --json
+  wifilab network interfaces --json
   wifilab capture status --json
   wifilab capture run [duration_seconds] [max_kib]
   wifilab capture latest --json
@@ -85,6 +87,11 @@ Read-only UI/agent data:
   protocols --json
             Analyze the newest saved WiFiLab capture offline with tshark -r.
             This compatibility command never opens a live capture interface.
+  network interfaces --json
+            Emit one read-only record for every kernel network interface with
+            observed link, NetworkManager, wireless, driver, bus, MTU, master,
+            counter, and sysfs metadata. Addressing/routes and Phase 8 roles are
+            intentionally deferred to later NETWORK subphases.
   capture status --json
             Report whether bounded passive capture is available, permitted,
             safe for the selected adapter, and ready in the current radio mode.
@@ -138,7 +145,8 @@ Safety:
   kills or restarts NetworkManager. Passive capture resolves that same physical
   selection again at capture time and refuses protected interfaces. Saved-PCAP
   analysis, inspection, viewer launch and reveal stay confined to validated
-  WiFiLab capture identifiers and never require sudo or pkexec.
+  WiFiLab capture identifiers and never require sudo or pkexec. NETWORK 8A is
+  read-only and performs no NetworkManager, route, link, or radio mutation.
 EOF
 }
 
@@ -240,6 +248,15 @@ case "${1:-adapters}" in
     protocols)
         [[ $# -eq 2 && ( $2 == --json || $2 == json ) ]] || { usage >&2; exit 2; }
         wifilab_protocols_json
+        ;;
+    network)
+        case "${2-}" in
+            interfaces)
+                [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_interfaces_json
+                ;;
+            *) usage >&2; exit 2 ;;
+        esac
         ;;
     capture)
         case "${2-}" in
