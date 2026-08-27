@@ -112,9 +112,13 @@ wifilab_capture_viewer_resolve() {
 
 wifilab_capture_open() {
     local selector=${1:-latest}
-    local target='' capture_id='' path='' viewer=''
+    local target='' capture_id='' path='' viewer='' rc=0
 
-    target=$(wifilab_capture_viewer_resolve "$selector") || return $?
+    target=$(wifilab_capture_viewer_resolve "$selector") || {
+        rc=$?
+        printf '%s\n' "$target"
+        return "$rc"
+    }
     IFS=$'\t' read -r capture_id path <<<"$target"
 
     if ! wifilab_graphical_session_available; then
@@ -141,9 +145,13 @@ wifilab_capture_open() {
 wifilab_capture_reveal() {
     local selector=${1:-latest}
     local target='' capture_id='' path='' opener=''
-    local opener_path=''
+    local opener_path='' rc=0
 
-    target=$(wifilab_capture_viewer_resolve "$selector") || return $?
+    target=$(wifilab_capture_viewer_resolve "$selector") || {
+        rc=$?
+        printf '%s\n' "$target"
+        return "$rc"
+    }
     IFS=$'\t' read -r capture_id path <<<"$target"
 
     if ! wifilab_graphical_session_available; then
