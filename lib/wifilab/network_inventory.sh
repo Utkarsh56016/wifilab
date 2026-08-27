@@ -18,6 +18,15 @@ wifilab_network_bool() {
     [[ ${1-} == true ]] && printf 'true' || printf 'false'
 }
 
+wifilab_network_nm_managed_json() {
+    local state=${1-}
+    case "$state" in
+        unmanaged) printf 'false' ;;
+        '')        printf 'null' ;;
+        *)         printf 'true' ;;
+    esac
+}
+
 wifilab_network_uint() {
     local value=${1-}
     [[ $value =~ ^[0-9]+$ ]] && printf '%s' "$value" || printf '0'
@@ -55,10 +64,12 @@ wifilab_network_interface_json() {
     local iface=$1 base="/sys/class/net/$1"
     local sysfs_path device_path ifindex arphrd_type operstate carrier mtu mac driver bus master
     local rx_bytes tx_bytes rx_packets tx_packets
-    local wireless=false virtual=false loopback=false nm_type nm_state connection nm_managed=true
+    local wireless=false virtual=false loopback=false nm_type nm_state connection
     local mode phy kind
 
-    [[ -d $base ]] || return 1
+    # A netdev may disappear between the directory snapshot and collection.
+    # Treat that as a skipped record rather than a command failure.
+    [[ -d $base ]] || return 0
 
     sysfs_path=$(readlink -f "$base" 2>/dev/null || true)
     [[ $sysfs_path == /sys/devices/virtual/net/* ]] && virtual=true
@@ -77,8 +88,8 @@ wifilab_network_interface_json() {
     carrier=$(cat "$base/carrier" 2>/dev/null || true)
     mtu=$(cat "$base/mtu" 2>/dev/null || true)
     mac=$(cat "$base/address" 2>/dev/null || true)
-    driver=$(wifilab_driver_for_iface "$iface")
-    bus=$(wifilab_udev_property "$iface" ID_BUS)
+    driver=$(wifilab_driver_for_iface "$iface" 2>/dev/null || true)
+    bus=$(wifilab_udev_property "$iface" ID_BUS 2>/dev/null || true)
 
     device_path=""
     if [[ -e $base/device || -L $base/device ]]; then
@@ -95,16 +106,15 @@ wifilab_network_interface_json() {
     rx_packets=$(cat "$base/statistics/rx_packets" 2>/dev/null || true)
     tx_packets=$(cat "$base/statistics/tx_packets" 2>/dev/null || true)
 
-    nm_type=$(wifilab_network_nm_type "$iface")
-    nm_state=$(wifilab_nm_state "$iface")
-    connection=$(wifilab_nm_connection "$iface")
-    [[ $nm_state == unmanaged ]] && nm_managed=false
+    nm_type=$(wifilab_network_nm_type "$iface" 2>/dev/null || true)
+    nm_state=$(wifilab_nm_state "$iface" 2>/dev/null || true)
+    connection=$(wifilab_nm_connection "$iface" 2>/dev/null || true)
 
     mode=""
     phy=""
     if [[ $wireless == true ]]; then
-        mode=$(wifilab_iface_type "$iface")
-        phy=$(wifilab_phy_for_iface "$iface")
+        mode=$(wifilab_iface_type "$iface" 2>/dev/null || true)
+        phy=$(wifilab_phy_for_iface "$iface" 2>/dev/null || true)
     fi
 
     kind=$(wifilab_network_kind "$wireless" "$loopback" "$virtual" "$nm_type")
@@ -121,7 +131,7 @@ wifilab_network_interface_json() {
     printf '"carrier":%s,' "$(wifilab_network_nullable_uint "$carrier")"
     printf '"nm_type":"%s",' "$(wifilab_json_escape "$nm_type")"
     printf '"nm_state":"%s",' "$(wifilab_json_escape "$nm_state")"
-    printf '"nm_managed":%s,' "$(wifilab_network_bool "$nm_managed")"
+    printf '"nm_managed":%s,' "$(wifilab_network_nm_managed_json "$nm_state")"
     printf '"connection":"%s",' "$(wifilab_json_escape "$connection")"
     printf '"mode":"%s",' "$(wifilab_json_escape "$mode")"
     printf '"phy":"%s",' "$(wifilab_json_escape "$phy")"
@@ -140,21 +150,29 @@ wifilab_network_interface_json() {
 }
 
 wifilab_network_interfaces_json() {
-    local path iface first=1 count=0
-    local -a ifaces=()
+    local path iface record first=1 count=0
+    local -a ifaces=() records=()
 
     for path in /sys/class/net/*; do
         [[ -d $path ]] || continue
         ifaces+=("${path##*/}")
     done
 
-    count=${#ifaces[@]}
+    # Collect first so an interface disappearing during the snapshot cannot
+    # leave count inconsistent with the JSON array that is actually emitted.
+    for iface in "${ifaces[@]}"; do
+        record=$(wifilab_network_interface_json "$iface" 2>/dev/null || true)
+        [[ -n $record ]] || continue
+        records+=("$record")
+    done
+
+    count=${#records[@]}
     printf '{"ok":true,"count":%d,"interfaces":[' "$count"
 
-    for iface in "${ifaces[@]}"; do
+    for record in "${records[@]}"; do
         (( first )) || printf ','
         first=0
-        wifilab_network_interface_json "$iface"
+        printf '%s' "$record"
     done
 
     printf ']}\n'
