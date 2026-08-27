@@ -23,6 +23,21 @@ wifilab_capinfos_field() {
     '
 }
 
+wifilab_capinfos_first_field() {
+    local report=$1 value='' key
+    shift
+
+    for key in "$@"; do
+        value=$(wifilab_capinfos_field "$report" "$key")
+        if [[ -n $value ]]; then
+            printf '%s\n' "$value"
+            return 0
+        fi
+    done
+
+    printf '\n'
+}
+
 wifilab_capture_inspect_json() {
     local selector=${1:-latest}
     local target='' capture_id='' path='' rc=0
@@ -112,8 +127,8 @@ wifilab_capture_inspect_json() {
         packet_count=$(wifilab_capinfos_field "$report" 'Number of packets')
         file_bytes=$(wifilab_capinfos_field "$report" 'File size')
         duration_seconds=$(wifilab_capinfos_field "$report" 'Capture duration')
-        start_epoch=$(wifilab_capinfos_field "$report" 'First packet time')
-        end_epoch=$(wifilab_capinfos_field "$report" 'Last packet time')
+        start_epoch=$(wifilab_capinfos_first_field "$report" 'Earliest packet time' 'First packet time')
+        end_epoch=$(wifilab_capinfos_first_field "$report" 'Latest packet time' 'Last packet time')
 
         packet_count=${packet_count%% *}
         file_bytes=${file_bytes%% *}
