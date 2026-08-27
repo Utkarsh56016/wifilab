@@ -50,7 +50,7 @@ wifilab_profile_action_blocked_json() {
 
 wifilab_network_profile_connect_json() {
     local iface=${1-} uuid=${2-} action=${3:-saved_profile_connect}
-    local preflight_json ready role active active_device
+    local preflight_json ready role active active_device current_active_uuid
     local route_risk_count before_context before_defaults
     local after_context after_defaults post_active_device route_safe active_ok
     local rollback_attempted=false rollback_succeeded=false rollback_context rollback_defaults
@@ -99,6 +99,12 @@ wifilab_network_profile_connect_json() {
           }
         '
         return 0
+    fi
+
+    current_active_uuid=$(wifilab_profile_active_uuid_on_iface "$iface")
+    if [[ -n $current_active_uuid && $current_active_uuid != "$uuid" ]]; then
+        wifilab_profile_action_blocked_json "$action" "$preflight_json" "target_has_other_active_profile"
+        return 3
     fi
 
     before_context=$(wifilab_network_context_json) || {
@@ -217,7 +223,7 @@ wifilab_network_profile_disconnect_json() {
     }
 
     local inventory_json roles_json context_json iface_json role_json
-    local role protected mode nm_managed nm_state active_uuid
+    local role protected mode nm_managed nm_state active_uuid ipv4_default_owner ipv6_default_owner
     local before_defaults after_context after_defaults route_safe disconnected_ok
     local rollback_attempted=false rollback_succeeded=false rollback_context rollback_defaults
 
@@ -247,21 +253,27 @@ wifilab_network_profile_disconnect_json() {
     role_json=$(jq -c --arg iface "$iface" '[.interfaces[] | select(.name == $iface)][0] // {}' <<<"$roles_json")
     role=$(jq -r '.role // "UNKNOWN"' <<<"$role_json")
     protected=$(jq -r '.protected // false' <<<"$role_json")
+    ipv4_default_owner=$(jq -r '.default_route_owner.ipv4 // false' <<<"$role_json")
+    ipv6_default_owner=$(jq -r '.default_route_owner.ipv6 // false' <<<"$role_json")
     mode=$(jq -r '.mode // ""' <<<"$iface_json")
     nm_managed=$(jq -r 'if .nm_managed == null then "unknown" else (.nm_managed|tostring) end' <<<"$iface_json")
     nm_state=$(jq -r '.nm_state // ""' <<<"$iface_json")
     before_defaults=$(wifilab_default_owners_json "$context_json")
 
-    if [[ $role == PRIMARY || $protected == true ]]; then
+    if [[ $role == PRIMARY || $ipv4_default_owner == true || $ipv6_default_owner == true ]]; then
         jq -cn \
-          --arg iface "$iface" --arg role "$role" --argjson protected "$protected" --argjson before "$before_defaults" '
+          --arg iface "$iface" --arg role "$role" \
+          --argjson protected "$protected" \
+          --argjson ipv4_default "$ipv4_default_owner" \
+          --argjson ipv6_default "$ipv6_default_owner" \
+          --argjson before "$before_defaults" '
           {
             ok:true,
             action:"saved_profile_disconnect",
             mutation_performed:false,
-            target:{interface:$iface,role:$role,protected:$protected},
+            target:{interface:$iface,role:$role,protected:$protected,default_route_owner:{ipv4:$ipv4_default,ipv6:$ipv6_default}},
             route_before:{default_route_owners:$before},
-            blocked_reasons:["protected_primary_disconnect_not_allowed"],
+            blocked_reasons:["default_route_owner_disconnect_not_allowed"],
             ready_for_mutation:false
           }
         '
