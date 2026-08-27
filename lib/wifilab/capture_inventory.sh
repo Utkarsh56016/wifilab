@@ -31,7 +31,7 @@ wifilab_capture_manifest_string_field() {
 
 wifilab_capture_manifest_uint_field() {
     local manifest=$1 key=$2 value=''
-    value=$(grep -o '"'"$key"'":[0-9][0-9]*' "$manifest" 2>/dev/null | head -n 1 | cut -d: -f2 || true)
+    value=$(grep -o '"'"$key"'\":[0-9][0-9]*' "$manifest" 2>/dev/null | head -n 1 | cut -d: -f2 || true)
     printf '%s\n' "$value"
 }
 
@@ -117,8 +117,15 @@ wifilab_capture_emit_item_json() {
 }
 
 wifilab_capture_names() {
+    local name
+
     [[ -d $WIFILAB_CAPTURE_DIR ]] || return 0
-    find "$WIFILAB_CAPTURE_DIR" -maxdepth 1 -type f -name 'capture-*.pcapng' -printf '%f\n' 2>/dev/null | sort -r
+
+    while IFS= read -r name; do
+        [[ -n $name ]] || continue
+        wifilab_capture_id_valid "$name" || continue
+        printf '%s\n' "$name"
+    done < <(find "$WIFILAB_CAPTURE_DIR" -maxdepth 1 -type f -name 'capture-*.pcapng' -printf '%f\n' 2>/dev/null | sort -r)
 }
 
 # Overrides the Phase 6 minimal inventory function after capture.sh is sourced.
@@ -140,7 +147,6 @@ wifilab_captures_json() {
     printf '"captures":['
 
     for name in "${capture_names[@]}"; do
-        wifilab_capture_id_valid "$name" || continue
         path="$WIFILAB_CAPTURE_DIR/$name"
         (( first )) || printf ','
         first=0
@@ -161,11 +167,6 @@ wifilab_capture_latest_json() {
     fi
 
     name=${capture_names[0]}
-    wifilab_capture_id_valid "$name" || {
-        printf '{"ok":false,"error":"capture_invalid","message":"latest WiFiLab capture identifier is invalid"}\n'
-        return 4
-    }
-
     path="$WIFILAB_CAPTURE_DIR/$name"
     printf '{"ok":true,"capture":'
     wifilab_capture_emit_item_json "$path"
