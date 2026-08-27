@@ -31,6 +31,7 @@ source "$ROOT_DIR/lib/wifilab/capture_viewer.sh"
 source "$ROOT_DIR/lib/wifilab/network_inventory.sh"
 source "$ROOT_DIR/lib/wifilab/network_context.sh"
 source "$ROOT_DIR/lib/wifilab/network_roles.sh"
+source "$ROOT_DIR/lib/wifilab/network_lab_path.sh"
 
 usage() {
     cat <<'EOF'
@@ -51,6 +52,7 @@ Usage:
   wifilab network interfaces --json
   wifilab network context --json
   wifilab network roles --json
+  wifilab network lab-path --json
   wifilab capture status --json
   wifilab capture run [duration_seconds] [max_kib]
   wifilab capture latest --json
@@ -103,6 +105,11 @@ Read-only UI/agent data:
             Derive PRIMARY, LAB, AUXILIARY, VIRTUAL, and TUNNEL roles from the
             persisted physical LAB selection plus current interface/route state.
             LAB/default-route conflicts are reported explicitly and never hidden.
+  network lab-path --json
+            Derive the selected LAB adapter's current Layer-3 state and compare
+            it with the workstation PRIMARY/default-route path. This is a
+            destination-independent main-table view; it never probes or mutates
+            routing and never invents a gateway for a monitor-only LAB adapter.
   capture status --json
             Report whether bounded passive capture is available, permitted,
             safe for the selected adapter, and ready in the current radio mode.
@@ -156,8 +163,9 @@ Safety:
   kills or restarts NetworkManager. Passive capture resolves that same physical
   selection again at capture time and refuses protected interfaces. Saved-PCAP
   analysis, inspection, viewer launch and reveal stay confined to validated
-  WiFiLab capture identifiers and never require sudo or pkexec. NETWORK 8A/8B/8C
-  are read-only and perform no NetworkManager, route, DNS, link, or radio mutation.
+  WiFiLab capture identifiers and never require sudo or pkexec. NETWORK
+  8A/8B/8C/8D are read-only and perform no NetworkManager, route, DNS, link,
+  radio, or connectivity mutation.
 EOF
 }
 
@@ -273,6 +281,10 @@ case "${1:-adapters}" in
             roles)
                 [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
                 wifilab_network_roles_json
+                ;;
+            lab-path)
+                [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_lab_path_json
                 ;;
             *) usage >&2; exit 2 ;;
         esac
