@@ -85,11 +85,18 @@ wifilab_network_nm_dns_record_json() {
         --arg name "$iface" \
         --arg dns4 "$dns4" \
         --arg dns6 "$dns6" '
+        def normalize_dns($value):
+          ($value
+            | gsub("\\|"; "\n")
+            | split("\n")
+            | map(gsub("^[[:space:]]+|[[:space:]]+$"; ""))
+            | map(select(length > 0 and . != "--"))
+            | unique);
         {
           name: $name,
           dns: {
-            ipv4: ($dns4 | split("\n") | map(select(length > 0 and . != "--")) | unique),
-            ipv6: ($dns6 | split("\n") | map(select(length > 0 and . != "--")) | unique)
+            ipv4: normalize_dns($dns4),
+            ipv6: normalize_dns($dns6)
           }
         }
     '
