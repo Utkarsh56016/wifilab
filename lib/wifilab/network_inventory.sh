@@ -14,17 +14,19 @@ wifilab_network_nm_type() {
     printf '%s\n' "$value"
 }
 
-wifilab_network_bool() {
-    [[ ${1-} == true ]] && printf 'true' || printf 'false'
+wifilab_network_nm_managed_json() {
+    local iface=$1 value
+    wifilab_have nmcli || { printf 'null'; return; }
+    value=$(nmcli -g GENERAL.NM-MANAGED device show "$iface" 2>/dev/null | head -n1 || true)
+    case "${value,,}" in
+        yes|true)  printf 'true' ;;
+        no|false)  printf 'false' ;;
+        *)         printf 'null' ;;
+    esac
 }
 
-wifilab_network_nm_managed_json() {
-    local state=${1-}
-    case "$state" in
-        unmanaged) printf 'false' ;;
-        '')        printf 'null' ;;
-        *)         printf 'true' ;;
-    esac
+wifilab_network_bool() {
+    [[ ${1-} == true ]] && printf 'true' || printf 'false'
 }
 
 wifilab_network_uint() {
@@ -64,7 +66,7 @@ wifilab_network_interface_json() {
     local iface=$1 base="/sys/class/net/$1"
     local sysfs_path device_path ifindex arphrd_type operstate carrier mtu mac driver bus master
     local rx_bytes tx_bytes rx_packets tx_packets
-    local wireless=false virtual=false loopback=false nm_type nm_state connection
+    local wireless=false virtual=false loopback=false nm_type nm_state nm_managed connection
     local mode phy kind
 
     # A netdev may disappear between the directory snapshot and collection.
@@ -108,6 +110,7 @@ wifilab_network_interface_json() {
 
     nm_type=$(wifilab_network_nm_type "$iface" 2>/dev/null || true)
     nm_state=$(wifilab_nm_state "$iface" 2>/dev/null || true)
+    nm_managed=$(wifilab_network_nm_managed_json "$iface" 2>/dev/null || printf 'null')
     connection=$(wifilab_nm_connection "$iface" 2>/dev/null || true)
 
     mode=""
@@ -131,7 +134,7 @@ wifilab_network_interface_json() {
     printf '"carrier":%s,' "$(wifilab_network_nullable_uint "$carrier")"
     printf '"nm_type":"%s",' "$(wifilab_json_escape "$nm_type")"
     printf '"nm_state":"%s",' "$(wifilab_json_escape "$nm_state")"
-    printf '"nm_managed":%s,' "$(wifilab_network_nm_managed_json "$nm_state")"
+    printf '"nm_managed":%s,' "$nm_managed"
     printf '"connection":"%s",' "$(wifilab_json_escape "$connection")"
     printf '"mode":"%s",' "$(wifilab_json_escape "$mode")"
     printf '"phy":"%s",' "$(wifilab_json_escape "$phy")"
