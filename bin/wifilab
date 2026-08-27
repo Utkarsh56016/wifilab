@@ -27,6 +27,7 @@ source "$ROOT_DIR/lib/wifilab/capture.sh"
 source "$ROOT_DIR/lib/wifilab/capture_inventory.sh"
 source "$ROOT_DIR/lib/wifilab/capture_analysis.sh"
 source "$ROOT_DIR/lib/wifilab/capture_inspect.sh"
+source "$ROOT_DIR/lib/wifilab/capture_viewer.sh"
 
 usage() {
     cat <<'EOF'
@@ -49,6 +50,9 @@ Usage:
   wifilab capture latest --json
   wifilab capture protocols <capture_id|latest> --json
   wifilab capture inspect <capture_id|latest> --json
+  wifilab capture viewer status --json
+  wifilab capture open <capture_id|latest>
+  wifilab capture reveal <capture_id|latest>
   wifilab captures --json
   wifilab monitor [iface]
   wifilab managed [iface]
@@ -95,6 +99,9 @@ Read-only UI/agent data:
             Inspect one validated saved PCAPNG on demand. Returns lightweight
             inventory metadata, SHA-256 integrity state, and capinfos-derived
             file type, encapsulation, packet count, size, duration and timestamps.
+  capture viewer status --json
+            Report graphical-session, Wireshark GUI, and desktop-opener
+            availability without launching anything.
   captures --json
             List WiFiLab-created captures. Existing name/bytes/file fields are
             retained while richer capture metadata is added.
@@ -106,6 +113,13 @@ Capture:
             Allowed size limit: 256..102400 KiB. Capture requires monitor mode,
             refuses protected/default-route interfaces, and never uses sudo,
             pkexec, or the privileged radio helper.
+  capture open <capture_id|latest>
+            Open one validated WiFiLab-owned saved capture in the Wireshark GUI.
+            The viewer is launched as the current desktop user with no privilege
+            escalation. Arbitrary paths and symbolic-link captures are refused.
+  capture reveal <capture_id|latest>
+            Validate the selected WiFiLab capture and reveal its capture directory
+            through the normal desktop opener. No permissions are changed.
 
 State commands:
   monitor   Switch the selected adapter to monitor mode. An explicit iface
@@ -123,7 +137,8 @@ Safety:
   physical metadata rather than wlanX/phyX names. WiFiLab never globally
   kills or restarts NetworkManager. Passive capture resolves that same physical
   selection again at capture time and refuses protected interfaces. Saved-PCAP
-  analysis and inspection are read-only and never open a live wireless interface.
+  analysis, inspection, viewer launch and reveal stay confined to validated
+  WiFiLab capture identifiers and never require sudo or pkexec.
 EOF
 }
 
@@ -149,6 +164,20 @@ doctor() {
         printf '  [optional] capinfos -> %s (capture inspection available)\n' "$(command -v capinfos)"
     else
         printf '  [optional] capinfos -> not installed (deep capture inspection disabled)\n'
+    fi
+
+    if command -v wireshark >/dev/null 2>&1; then
+        printf '  [optional] wireshark -> %s (capture GUI viewer available)\n' "$(command -v wireshark)"
+    else
+        printf '  [optional] wireshark -> not installed (GUI viewer unavailable)\n'
+    fi
+
+    if command -v xdg-open >/dev/null 2>&1; then
+        printf '  [optional] desktop opener -> %s\n' "$(command -v xdg-open)"
+    elif command -v gio >/dev/null 2>&1; then
+        printf '  [optional] desktop opener -> %s open\n' "$(command -v gio)"
+    else
+        printf '  [optional] desktop opener -> unavailable (reveal disabled)\n'
     fi
 
     if command -v dumpcap >/dev/null 2>&1; then
@@ -237,6 +266,18 @@ case "${1:-adapters}" in
             inspect)
                 [[ $# -eq 4 && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
                 wifilab_capture_inspect_json "$3"
+                ;;
+            viewer)
+                [[ $# -eq 4 && $3 == status && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_capture_viewer_status_json
+                ;;
+            open)
+                [[ $# -eq 3 ]] || { usage >&2; exit 2; }
+                wifilab_capture_open "$3"
+                ;;
+            reveal)
+                [[ $# -eq 3 ]] || { usage >&2; exit 2; }
+                wifilab_capture_reveal "$3"
                 ;;
             *) usage >&2; exit 2 ;;
         esac
