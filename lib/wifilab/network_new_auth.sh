@@ -82,7 +82,7 @@ wifilab_network_new_preflight_json() {
     nm_managed=$(jq -r 'if .nm_managed == null then "unknown" else (.nm_managed|tostring) end' <<<"$iface_json")
     nm_type=$(jq -r '.nm_type // ""' <<<"$iface_json")
     connection=$(jq -r '.connection // ""' <<<"$iface_json")
-    permanent_mac=$(jq -r '.mac // ""' <<<"$iface_json")
+    permanent_mac=$(wifilab_iface_permanent_mac "$iface")
 
     [[ $role != PRIMARY ]] || blocked+=("primary_target_not_allowed")
     [[ $mode == managed ]] || blocked+=("wireless_mode_not_managed")
