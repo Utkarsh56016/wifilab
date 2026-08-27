@@ -242,7 +242,11 @@ wifilab_network_wifi_scan_json() {
         security=${WIFILAB_NMCLI_FIELDS[6]}
 
         [[ $signal =~ ^[0-9]+$ ]] || signal=0
-        [[ $freq =~ ^[0-9]+$ ]] || freq=0
+        if [[ $freq =~ ^[[:space:]]*([0-9]+)([[:space:]]*MHz)?[[:space:]]*$ ]]; then
+            freq=${BASH_REMATCH[1]}
+        else
+            freq=0
+        fi
         [[ $channel =~ ^[0-9]+$ ]] || channel=0
 
         band=$(wifilab_wifi_band_for_frequency "$freq")
