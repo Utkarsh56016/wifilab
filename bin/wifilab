@@ -34,6 +34,8 @@ source "$ROOT_DIR/lib/wifilab/network_roles.sh"
 source "$ROOT_DIR/lib/wifilab/network_lab_path.sh"
 source "$ROOT_DIR/lib/wifilab/network_topology.sh"
 source "$ROOT_DIR/lib/wifilab/network_wifi_scan.sh"
+source "$ROOT_DIR/lib/wifilab/network_profiles.sh"
+source "$ROOT_DIR/lib/wifilab/network_profile_actions.sh"
 
 usage() {
     cat <<'EOF'
@@ -57,6 +59,11 @@ Usage:
   wifilab network lab-path --json
   wifilab network topology --json
   wifilab network wifi-scan <iface> --json
+  wifilab network profiles --json
+  wifilab network profile-preflight <iface> <uuid> --json
+  wifilab network profile-connect <iface> <uuid> --json
+  wifilab network profile-disconnect <iface> --json
+  wifilab network profile-reconnect <iface> <uuid> --json
   wifilab capture status --json
   wifilab capture run [duration_seconds] [max_kib]
   wifilab capture latest --json
@@ -125,6 +132,13 @@ Read-only UI/agent data:
             security, saved-profile state, and connected state. Monitor-mode or
             NetworkManager-unmanaged adapters return an explicit blocked state;
             NETWORK never restores or changes their radio mode automatically.
+  network profiles --json
+            Emit saved NetworkManager Wi-Fi profile metadata without querying
+            passwords, PSKs, 802.1X secrets, or secret-agent values.
+  network profile-preflight <iface> <uuid> --json
+            Read-only saved-profile activation preflight. Reports adapter state,
+            PRIMARY protection, profile binding/active-device conflicts, current
+            default-route owners, and whether the profile may install defaults.
   capture status --json
             Report whether bounded passive capture is available, permitted,
             safe for the selected adapter, and ready in the current radio mode.
@@ -145,6 +159,20 @@ Read-only UI/agent data:
   captures --json
             List WiFiLab-created captures. Existing name/bytes/file fields are
             retained while richer capture metadata is added.
+
+Saved-profile connection actions:
+  network profile-connect <iface> <uuid> --json
+            Activate one explicit saved Wi-Fi profile on one explicit non-PRIMARY
+            managed adapter. Profiles capable of installing IPv4/IPv6 default
+            routes are refused. Default-route ownership is snapshotted before and
+            after activation; validation failure triggers best-effort rollback.
+  network profile-disconnect <iface> --json
+            Disconnect one explicit non-PRIMARY Wi-Fi adapter only when it does
+            not own an IPv4/IPv6 default route. Default-route owners must remain
+            unchanged; unexpected movement triggers best-effort reconnect.
+  network profile-reconnect <iface> <uuid> --json
+            Re-run the same guarded saved-profile activation contract after an
+            explicit disconnect. No credential arguments are accepted.
 
 Capture:
   capture run [duration_seconds] [max_kib]
@@ -172,17 +200,17 @@ State commands:
             selected adapter, or `wifilab channel wlan6 11` explicitly.
 
 Safety:
-  WiFiLab refuses state changes on wireless interfaces carrying an active
-  NetworkManager connection or a system default route. Selection stores
-  physical metadata rather than wlanX/phyX names. WiFiLab never globally
-  kills or restarts NetworkManager. Passive capture resolves that same physical
-  selection again at capture time and refuses protected interfaces. Saved-PCAP
-  analysis, inspection, viewer launch and reveal stay confined to validated
-  WiFiLab capture identifiers and never require sudo or pkexec. NETWORK
-  8A/8B/8C/8D/8E are read-only. NETWORK 8F may request a NetworkManager Wi-Fi
-  rescan on an explicit managed Wi-Fi interface, but never activates, disconnects,
-  modifies, creates, or forgets a connection and never changes routes, DNS,
-  radio mode, NetworkManager ownership, bridge/tunnel state, or connectivity.
+  WiFiLab refuses radio state changes on wireless interfaces carrying an active
+  NetworkManager connection or a system default route. Selection stores physical
+  metadata rather than wlanX/phyX names. WiFiLab never globally kills or restarts
+  NetworkManager. Passive capture resolves that same physical selection again at
+  capture time and refuses protected interfaces. Saved-PCAP analysis, inspection,
+  viewer launch and reveal stay confined to validated WiFiLab capture identifiers
+  and never require sudo or pkexec. NETWORK 8A-8E are read-only. NETWORK 8F may
+  request an adapter-explicit NetworkManager scan only. NETWORK 8G saved-profile
+  mutations are explicit, refuse PRIMARY/default-route targets, refuse profiles
+  that may install default routes on a secondary adapter, never accept secrets,
+  and require pre/post default-route validation with best-effort rollback.
 EOF
 }
 
@@ -310,6 +338,26 @@ case "${1:-adapters}" in
             wifi-scan)
                 [[ $# -eq 4 && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
                 wifilab_network_wifi_scan_json "$3"
+                ;;
+            profiles)
+                [[ $# -eq 3 && ( $3 == --json || $3 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_profiles_json
+                ;;
+            profile-preflight)
+                [[ $# -eq 5 && ( $5 == --json || $5 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_profile_preflight_json "$3" "$4"
+                ;;
+            profile-connect)
+                [[ $# -eq 5 && ( $5 == --json || $5 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_profile_connect_json "$3" "$4"
+                ;;
+            profile-disconnect)
+                [[ $# -eq 4 && ( $4 == --json || $4 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_profile_disconnect_json "$3"
+                ;;
+            profile-reconnect)
+                [[ $# -eq 5 && ( $5 == --json || $5 == json ) ]] || { usage >&2; exit 2; }
+                wifilab_network_profile_reconnect_json "$3" "$4"
                 ;;
             *) usage >&2; exit 2 ;;
         esac
